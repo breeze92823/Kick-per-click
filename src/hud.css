@@ -1,0 +1,430 @@
+/* HUD laid out on a 1920x991 reference screen: every size is N * --k. */
+#hud {
+  --k: min(calc(100vw / 1920), calc(100vh / 991));
+  --ink: #1b1b28;
+  --studs: radial-gradient(circle at 50% 50%, transparent 0 26%, rgba(255, 255, 255, 0.34) 28% 37%, transparent 39%);
+  --studs-dark: radial-gradient(circle at 50% 50%, transparent 0 26%, rgba(0, 0, 0, 0.07) 28% 37%, transparent 39%);
+  --stud-size: calc(var(--k) * 28) calc(var(--k) * 28);
+  --rainbow: linear-gradient(90deg, #ff3b3b, #ff9a1a, #ffe11a, #4be03a, #1ac8ff, #4a5cff, #c03aff);
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  font-family: 'Fredoka', 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif;
+  font-weight: 700;
+  color: #fff;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#hud button {
+  position: relative;
+  pointer-events: auto;
+  font: inherit;
+  color: inherit;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  transition: transform 0.08s;
+}
+#hud button:hover { transform: scale(1.04); }
+#hud button:active { transform: scale(0.94); }
+#hud svg { display: block; overflow: visible; }
+/* Outlined lettering. --sw / --sc override stroke width and colour. */
+#hud .t {
+  display: block;
+  line-height: 1;
+  white-space: nowrap;
+  -webkit-text-stroke: var(--sw, calc(var(--k) * 7)) var(--sc, var(--ink));
+  paint-order: stroke fill;
+}
+#hud .studded {
+  border-radius: calc(var(--k) * 8);
+  box-shadow: 0 0 0 calc(var(--k) * 4) var(--ink), inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.45);
+  background-size: var(--stud-size), 100% 100%;
+}
+
+/* --- Top-left menu buttons ------------------------------------------------- */
+#hud .sysbar { position: absolute; left: calc(var(--k) * 20); top: calc(var(--k) * 16); display: flex; gap: calc(var(--k) * 14); }
+#hud .sys {
+  width: calc(var(--k) * 56);
+  height: calc(var(--k) * 56);
+  border-radius: 50%;
+  background: rgba(18, 18, 22, 0.78);
+  display: grid;
+  place-items: center;
+}
+#hud .sys svg { width: 50%; height: 50%; }
+
+/* --- Top centre: Auto Click / KICK! / Auto Kick ------------------------------ */
+#hud .topbar {
+  position: absolute;
+  top: calc(var(--k) * 10);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--k) * 26);
+}
+#hud .tool { width: calc(var(--k) * 124); height: calc(var(--k) * 104); }
+#hud .tool svg { width: calc(var(--k) * 84); height: calc(var(--k) * 84); margin: 0 auto; }
+#hud .tool .dot {
+  position: absolute;
+  top: calc(var(--k) * 2);
+  right: calc(var(--k) * 10);
+  width: calc(var(--k) * 38);
+  height: calc(var(--k) * 38);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff7070, #e3161f 62%);
+  box-shadow: 0 0 0 calc(var(--k) * 3) #3a0a0a;
+}
+#hud .tool.on .dot { background: radial-gradient(circle at 35% 30%, #9dff7a, #22c21a 62%); box-shadow: 0 0 0 calc(var(--k) * 3) #0a3a0a; }
+#hud .tool .t { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); font-size: calc(var(--k) * 25); --sw: calc(var(--k) * 6); }
+#hud .kick {
+  margin-top: calc(var(--k) * 12);
+  width: calc(var(--k) * 192);
+  height: calc(var(--k) * 84);
+  background-image: var(--studs), linear-gradient(#7cc8ff, #3d8cf0);
+  box-shadow: 0 0 0 calc(var(--k) * 4) #173a82, inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.6);
+}
+#hud .kick .t { font-size: calc(var(--k) * 44); --sc: #163a80; }
+
+/* --- Top right boosts -------------------------------------------------------- */
+#hud .boosts { position: absolute; right: calc(var(--k) * 22); top: calc(var(--k) * 18); display: flex; gap: calc(var(--k) * 16); }
+#hud .boost { width: calc(var(--k) * 78); text-align: center; }
+#hud .boost svg { width: calc(var(--k) * 74); height: calc(var(--k) * 70); margin: 0 auto; }
+#hud .boost .t { position: relative; margin-top: calc(var(--k) * -18); font-size: calc(var(--k) * 32); }
+
+/* --- Left menu tiles --------------------------------------------------------- */
+#hud .menu {
+  position: absolute;
+  left: calc(var(--k) * 20);
+  top: calc(50% - var(--k) * 96);
+  display: grid;
+  grid-template-columns: repeat(2, calc(var(--k) * 118));
+  gap: calc(var(--k) * 14) calc(var(--k) * 20);
+}
+#hud .tile {
+  width: calc(var(--k) * 118);
+  height: calc(var(--k) * 118);
+  box-shadow: 0 0 0 calc(var(--k) * 4) var(--ink), 0 0 0 calc(var(--k) * 6) rgba(255, 255, 255, 0.85), inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.45);
+}
+#hud .tile svg { width: calc(var(--k) * 80); height: calc(var(--k) * 80); margin: calc(var(--k) * 6) auto 0; }
+#hud .tile .t { position: absolute; left: 50%; bottom: calc(var(--k) * 6); transform: translateX(-50%); font-size: calc(var(--k) * 26); --sw: calc(var(--k) * 6); }
+#hud .tile .pct { top: calc(var(--k) * -16); bottom: auto; font-size: calc(var(--k) * 44); }
+#hud .shop { background-image: var(--studs), linear-gradient(#ffe33a, #ffa11a); }
+#hud .rebirth { background-image: var(--studs), linear-gradient(#80caff, #2f7bea); }
+#hud .inventory { background-image: var(--studs), linear-gradient(#ffc44a, #f2851e); }
+#hud .legends { background-image: var(--studs), linear-gradient(#ce90ff, #7c43e6); }
+
+/* --- Bottom-left counters ---------------------------------------------------- */
+#hud .counters { position: absolute; left: 0; bottom: calc(var(--k) * 72); display: flex; flex-direction: column; gap: calc(var(--k) * 24); }
+#hud .counter {
+  display: flex;
+  align-items: center;
+  width: calc(var(--k) * 340);
+  height: calc(var(--k) * 86);
+  padding-left: calc(var(--k) * 16);
+  background: linear-gradient(90deg, rgba(10, 10, 20, 0.42), rgba(10, 10, 20, 0.28) 62%, transparent);
+}
+#hud .counter svg { width: calc(var(--k) * 84); height: calc(var(--k) * 84); flex: none; }
+#hud .counter .t { margin-left: calc(var(--k) * 26); font-size: calc(var(--k) * 68); --sw: calc(var(--k) * 9); }
+#hud .counter.rebirths .t { color: #ff6b86; }
+#hud .counter.wins .t { color: #ffd23a; }
+
+/* --- Bottom centre: level, kick power bar, power packs ----------------------- */
+#hud .power { position: absolute; left: 50%; bottom: calc(var(--k) * 12); transform: translateX(-50%); width: calc(var(--k) * 678); }
+#hud .power .row { display: flex; justify-content: space-between; align-items: flex-end; }
+#hud .level, #hud .mult { font-size: calc(var(--k) * 46); }
+#hud .mult { color: #ffd23a; }
+#hud .bar {
+  position: relative;
+  height: calc(var(--k) * 70);
+  margin-top: calc(var(--k) * 8);
+  overflow: hidden;
+  background-color: #fff;
+  background-image: var(--studs-dark), linear-gradient(#fff, #f2f2f6);
+}
+#hud .bar .fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background-image: var(--studs), linear-gradient(#ffe33a, #ff9d1a);
+  background-size: var(--stud-size), 100% 100%;
+  transition: width 0.12s ease-out;
+}
+#hud .bar .t { position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--k) * 46); }
+#hud .buys { display: flex; gap: calc(var(--k) * 14); margin-top: calc(var(--k) * 14); }
+#hud .buy { height: calc(var(--k) * 78); display: grid; place-items: center; }
+#hud .buy svg { position: absolute; left: 50%; top: 50%; width: calc(var(--k) * 96); height: calc(var(--k) * 64); transform: translate(-50%, -50%); }
+#hud .buy .t { position: relative; font-size: calc(var(--k) * 28); --sw: calc(var(--k) * 6); }
+#hud .b750 { width: calc(var(--k) * 166); background-image: var(--studs), linear-gradient(#ff62f2, #bd2ad8); }
+#hud .b2k { width: calc(var(--k) * 166); background-image: var(--studs), linear-gradient(#ff5f5f, #d81f2a); }
+#hud .b4k { flex: 1; background-image: var(--studs), var(--rainbow); }
+#hud .b4k .t { font-size: calc(var(--k) * 46); --sw: calc(var(--k) * 8); }
+
+/* --- Right offers ------------------------------------------------------------ */
+#hud .offers {
+  position: absolute;
+  right: calc(var(--k) * 16);
+  top: calc(50% - var(--k) * 126);
+  width: calc(var(--k) * 308);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--k) * 58);
+}
+#hud .offer { height: calc(var(--k) * 92); display: grid; place-items: center; }
+#hud .offer > svg { position: absolute; left: 50%; top: 50%; width: calc(var(--k) * 96); height: calc(var(--k) * 70); transform: translate(-50%, -50%); }
+#hud .offer > .t { position: relative; font-size: calc(var(--k) * 46); --sw: calc(var(--k) * 8); }
+#hud .kick2x { background-image: var(--studs), var(--rainbow); }
+#hud .wins2x { background-image: var(--studs), linear-gradient(#ffe33a, #ff9a1a); }
+#hud .price { position: absolute; display: flex; align-items: center; gap: calc(var(--k) * 8); }
+#hud .price svg { width: calc(var(--k) * 46); height: calc(var(--k) * 46); }
+#hud .price .t { font-size: calc(var(--k) * 46); color: #74ff4a; --sc: #0e3a10; }
+#hud .kick2x .price { left: calc(var(--k) * -30); top: calc(var(--k) * -48); }
+#hud .wins2x .price { left: 50%; bottom: calc(var(--k) * -46); transform: translateX(-50%); }
+#hud .offer > .op { position: absolute; right: calc(var(--k) * -14); top: calc(var(--k) * -36); font-size: calc(var(--k) * 50); color: #ff2a2a; --sc: #fff; transform: rotate(-8deg); }
+
+/* --- Prompt, toast, kick pops ------------------------------------------------ */
+#hud .prompt {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--k) * 300);
+  transform: translateX(-50%);
+  padding: calc(var(--k) * 10) calc(var(--k) * 24);
+  border-radius: calc(var(--k) * 40);
+  background: rgba(15, 15, 25, 0.72);
+  font-size: calc(var(--k) * 28);
+  display: none;
+}
+#hud .prompt.show { display: block; }
+#hud .toast {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--k) * 140);
+  transform: translateX(-50%);
+  font-size: calc(var(--k) * 40);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+#hud .toast.show { opacity: 1; }
+#hud .pop {
+  position: absolute;
+  font-size: calc(var(--k) * 40);
+  color: #ffe23a;
+  animation: hud-pop 0.8s ease-out forwards;
+}
+@keyframes hud-pop {
+  from { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+  15% { transform: translate(-50%, calc(var(--k) * 12)) scale(1.15); opacity: 1; }
+  to { transform: translate(-50%, calc(var(--k) * 90)) scale(1); opacity: 0; }
+}
+
+/* --- Kick lane: kick buttons at the bottom centre, clutter hidden ------------- */
+#hud .topbar, #hud .offers { transition: top 0.25s, opacity 0.25s; }
+#hud.lane .topbar { top: calc(100% - var(--k) * 124); }
+#hud.lane .power,
+#hud.lane .menu,
+#hud.lane .boosts,
+#hud.lane .wins2x,
+#hud.lane .prompt { display: none !important; }
+#hud.lane .offers { top: calc(50% - var(--k) * 46); }
+
+/* --- Kick lane aiming: CANCEL button, power meter, "Tap to Kick!" ------------- */
+#hud .aim { display: none; position: absolute; left: calc(var(--k) * 1458); top: calc(var(--k) * 212); width: calc(var(--k) * 84); pointer-events: auto; cursor: pointer; }
+#hud.lane.aiming .aim { display: block; }
+#hud .meter {
+  position: relative;
+  height: calc(var(--k) * 488);
+  border-radius: calc(var(--k) * 14);
+  overflow: hidden;
+  background: linear-gradient(#e8e8ee, #b9b9c6);
+  box-shadow: 0 0 0 calc(var(--k) * 6) var(--ink), inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.5);
+}
+#hud .mfill { position: absolute; inset: auto 0 0 0; height: 0; background-image: var(--studs), linear-gradient(#d23be6, #8a1aa8); background-size: var(--stud-size), 100% 100%; }
+#hud .meter i { position: absolute; left: 0; right: 0; height: calc(var(--k) * 5); background: var(--ink); }
+#hud .meter i:nth-of-type(1) { top: 25%; }
+#hud .meter i:nth-of-type(2) { top: 50%; }
+#hud .meter i:nth-of-type(3) { top: 75%; }
+#hud .aim .tap {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--k) * 512);
+  transform: translateX(-50%);
+  font-size: calc(var(--k) * 56);
+  color: #ff5be8;
+  --sw: calc(var(--k) * 10);
+  --sc: #3a0a4a;
+}
+#hud.aiming .kick {
+  background-image: var(--studs), linear-gradient(#ff7b7b, #d81f2a);
+  box-shadow: 0 0 0 calc(var(--k) * 4) #5a0d12, inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.5);
+}
+#hud.aiming .kick .t { font-size: calc(var(--k) * 38); --sc: #5a0d12; }
+
+/* --- Rebirth window ---------------------------------------------------------- */
+#hud .modal {
+  display: none;
+  position: absolute;
+  inset: 0;
+  place-items: center;
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(calc(var(--k) * 10));
+  -webkit-backdrop-filter: blur(calc(var(--k) * 10));
+}
+#hud .modal.show { display: grid; }
+#hud .rbwin {
+  width: calc(var(--k) * 914);
+  height: calc(var(--k) * 656);
+  border-radius: calc(var(--k) * 6);
+  box-shadow: 0 0 0 calc(var(--k) * 6) var(--ink);
+  overflow: hidden;
+  background: linear-gradient(rgba(130, 105, 60, 0.82), rgba(95, 80, 55, 0.78));
+}
+#hud .rbhead {
+  position: relative;
+  height: calc(var(--k) * 150);
+  display: flex;
+  align-items: center;
+  padding-left: calc(var(--k) * 26);
+  border-bottom: calc(var(--k) * 6) var(--ink) solid;
+  background-image: var(--studs), linear-gradient(#2f7bff, #1c58d8);
+  background-size: var(--stud-size), 100% 100%;
+}
+#hud .rbhead > svg { width: calc(var(--k) * 84); height: calc(var(--k) * 84); flex: none; }
+#hud .rbtitle { margin-left: calc(var(--k) * 24); font-size: calc(var(--k) * 84); --sc: #0b2a8a; }
+#hud .rbclose {
+  position: absolute;
+  right: calc(var(--k) * 16);
+  top: calc(var(--k) * 24);
+  width: calc(var(--k) * 90);
+  height: calc(var(--k) * 100);
+  display: grid;
+  place-items: center;
+  background-image: var(--studs), linear-gradient(#ff5470, #e0183c);
+}
+#hud .rbclose .t { font-size: calc(var(--k) * 84); --sw: calc(var(--k) * 9); }
+#hud .rbbody { position: relative; height: calc(100% - var(--k) * 150); }
+#hud .rbmults { position: absolute; left: 0; right: 0; top: calc(var(--k) * 88); display: flex; justify-content: center; align-items: center; gap: calc(var(--k) * 50); }
+#hud .chip { position: relative; width: calc(var(--k) * 264); height: calc(var(--k) * 84); display: flex; align-items: center; justify-content: center; gap: calc(var(--k) * 8); background-image: var(--studs), linear-gradient(#ffe86a, #ffc21a); box-shadow: 0 0 0 calc(var(--k) * 4) #6a3d00, inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.55); }
+#hud .chip svg { width: calc(var(--k) * 72); height: calc(var(--k) * 46); }
+#hud .chip .t { font-size: calc(var(--k) * 54); --sw: calc(var(--k) * 8); }
+#hud .arrow { width: calc(var(--k) * 60); height: calc(var(--k) * 52); }
+#hud .rbwarn { position: absolute; left: 0; right: 0; top: calc(var(--k) * 228); text-align: center; font-size: calc(var(--k) * 34); --sw: calc(var(--k) * 6); }
+#hud .rbbar {
+  position: absolute;
+  left: calc(var(--k) * 100);
+  right: calc(var(--k) * 100);
+  top: calc(var(--k) * 275);
+  height: calc(var(--k) * 56);
+  border-radius: calc(var(--k) * 6);
+  background: #1c1710;
+  box-shadow: 0 0 0 calc(var(--k) * 4) var(--ink);
+  overflow: hidden;
+}
+#hud .rbfill { position: absolute; inset: 0 auto 0 0; width: 0; background-image: var(--studs), linear-gradient(#5fe04a, #1fa818); background-size: var(--stud-size), 100% 100%; transition: width 0.15s; }
+#hud .rbbar .t { position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--k) * 30); --sw: calc(var(--k) * 5); }
+#hud .rbgo {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--k) * 375);
+  margin-left: calc(var(--k) * -118);
+  width: calc(var(--k) * 236);
+  height: calc(var(--k) * 74);
+  display: grid;
+  place-items: center;
+  background-image: var(--studs), linear-gradient(#5fe04a, #1fa818);
+  box-shadow: 0 0 0 calc(var(--k) * 4) #0a3a0a, inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.45);
+}
+#hud .rbgo .t { font-size: calc(var(--k) * 46); --sw: calc(var(--k) * 7); --sc: #0a3a0a; }
+#hud .rbgo.off { filter: grayscale(0.75) brightness(0.8); }
+
+/* --- Legends window (924x720 on the reference grid) ---------------------------- */
+#hud .lgwin {
+  width: calc(var(--k) * 924);
+  height: calc(var(--k) * 720);
+  box-shadow: 0 0 0 calc(var(--k) * 6) var(--ink);
+  overflow: hidden;
+  background: linear-gradient(rgba(120, 100, 70, 0.9), rgba(80, 68, 50, 0.9));
+}
+#hud .lghead {
+  position: relative;
+  height: calc(var(--k) * 120);
+  display: flex;
+  align-items: center;
+  padding-left: calc(var(--k) * 14);
+  border-bottom: calc(var(--k) * 6) var(--ink) solid;
+  background-image: var(--studs), linear-gradient(#c43cf0, #9a24d4);
+  background-size: var(--stud-size), 100% 100%;
+}
+#hud .lghead > svg { width: calc(var(--k) * 90); height: calc(var(--k) * 90); flex: none; }
+#hud .lgtitle { margin-left: calc(var(--k) * 14); font-size: calc(var(--k) * 78); --sw: calc(var(--k) * 10); --sc: #14091f; }
+#hud .lghead .rbclose { top: calc(var(--k) * 14); width: calc(var(--k) * 80); height: calc(var(--k) * 80); right: calc(var(--k) * 14); }
+#hud .lghead .rbclose .t { font-size: calc(var(--k) * 70); }
+#hud .lgbody { height: calc(100% - var(--k) * 120); box-sizing: border-box; overflow-y: auto; scrollbar-width: none; padding: calc(var(--k) * 22) calc(var(--k) * 28); display: flex; flex-direction: column; gap: calc(var(--k) * 8); }
+#hud .lgrow {
+  position: relative;
+  height: calc(var(--k) * 178);
+  display: flex;
+  align-items: center;
+  padding: 0 calc(var(--k) * 22) 0 calc(var(--k) * 24);
+  border-radius: calc(var(--k) * 6);
+  background: rgba(40, 28, 22, 0.8);
+}
+#hud .lgrow.limited { background: linear-gradient(#4a1414, #2c0c10); box-shadow: inset 0 0 0 calc(var(--k) * 4) #d9242c; }
+#hud .lgrow.divine { background: linear-gradient(#3e2c14, #2c2010); box-shadow: inset 0 0 0 calc(var(--k) * 4) #f2c030; }
+#hud .lgrow.common { background: rgba(70, 58, 44, 0.75); }
+#hud .lgicon {
+  position: relative;
+  width: calc(var(--k) * 138);
+  height: calc(var(--k) * 138);
+  flex: none;
+  border-radius: calc(var(--k) * 4);
+  background: linear-gradient(#2a2430, #16121c);
+  box-shadow: 0 0 0 calc(var(--k) * 3) #0c0a12;
+}
+#hud .lgicon svg { width: 100%; height: 100%; padding: calc(var(--k) * 8); box-sizing: border-box; }
+#hud .lgrow.limited .lgicon { box-shadow: 0 0 0 calc(var(--k) * 3) #d9242c; }
+#hud .lgtag { position: absolute; left: 50%; top: calc(var(--k) * -14); transform: translateX(-50%); font-size: calc(var(--k) * 30); color: #ffd21a; --sw: calc(var(--k) * 6); }
+#hud .lginfo { flex: 1; margin-left: calc(var(--k) * 20); display: flex; flex-direction: column; gap: calc(var(--k) * 6); }
+#hud .lgname { font-size: calc(var(--k) * 52); --sw: calc(var(--k) * 8); }
+#hud .lgrow.limited .lgname { color: #ffd6e0; }
+#hud .lgrow.divine .lgname { color: #ffc040; }
+#hud .lgrow.divine .tier { color: #ffe9a0; }
+#hud .lgrow.common .lgname { color: #e8e4e8; }
+#hud .lgrow.rare .lgname { color: #4aa8ff; }
+#hud .lgrow.epic .lgname { color: #b060ff; }
+#hud .lgrow.legendary .lgname { color: #ffd21a; }
+#hud .lgrow { flex: none; }
+#hud .lgbtns { flex: none; display: flex; flex-direction: column; gap: calc(var(--k) * 10); }
+#hud .lgcost {
+  width: calc(var(--k) * 202);
+  height: calc(var(--k) * 56);
+  display: flex; align-items: center; justify-content: center; gap: calc(var(--k) * 10);
+  background-image: var(--studs), linear-gradient(#a8f03a, #2fb818);
+  box-shadow: 0 0 0 calc(var(--k) * 4) #0a3a0a, inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.4);
+}
+#hud .lgcost svg { width: calc(var(--k) * 38); height: calc(var(--k) * 38); }
+#hud .lgcost .t { font-size: calc(var(--k) * 36); --sw: calc(var(--k) * 7); --sc: #0a3a0a; }
+#hud .lgleft { font-size: calc(var(--k) * 26); color: #ffd23a; --sw: calc(var(--k) * 5); }
+#hud .lgwins { display: flex; align-items: center; gap: calc(var(--k) * 10); }
+#hud .lgwins svg { width: calc(var(--k) * 58); height: calc(var(--k) * 58); }
+#hud .lgwins .t { font-size: calc(var(--k) * 44); --sw: calc(var(--k) * 8); }
+#hud .lgbuy, #hud .lgbought { flex: none; display: flex; align-items: center; justify-content: center; gap: calc(var(--k) * 10); }
+#hud .lgbuy {
+  width: calc(var(--k) * 202);
+  height: calc(var(--k) * 60);
+  background-image: var(--studs), linear-gradient(#b43cf2, #7a1ad0);
+  box-shadow: 0 0 0 calc(var(--k) * 4) #2a0a4a, inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.4);
+}
+#hud .lgbuy svg { width: calc(var(--k) * 40); height: calc(var(--k) * 40); }
+#hud .lgbuy .t { font-size: calc(var(--k) * 38); --sw: calc(var(--k) * 8); --sc: #1a0a30; }
+#hud .lgbought {
+  width: calc(var(--k) * 202);
+  height: calc(var(--k) * 66);
+  background-image: var(--studs), linear-gradient(#4ee03a, #1fa818);
+  box-shadow: 0 0 0 calc(var(--k) * 4) #0a3a0a, inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.4);
+}
+#hud .lgbought .t { font-size: calc(var(--k) * 42); --sw: calc(var(--k) * 7); --sc: #0a3a0a; }
