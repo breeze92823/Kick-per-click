@@ -7,10 +7,15 @@ import { ballMaterial } from './materials.js'
 import { floorAt, player } from './player.js'
 import { setKickView, setTrackTarget } from './camera.js'
 import { kickSpeed, stats } from './stats.js'
+import { createKickFx } from './kickFx.js'
 
 const WALL_MARGIN = 0.6 // m the ball keeps from the lane walls
 
-export function createBallKick(scene, avatar, onLanded) {
+// hooks: { onLanded(metres), onLaunch(power), onFly(metres, ballPosition), onBounce(metres) }
+export function createBallKick(scene, avatar, hooks = {}) {
+  const fx = createKickFx(scene)
+  const prev = { x: 0, y: 0, z: 0 }
+  let boosted = false
   const mesh = new Mesh(new SphereGeometry(1, 24, 16), ballMaterial('#f4f4f4', '#1d1d22'))
   mesh.scale.setScalar(K.radius)
   mesh.castShadow = true
@@ -35,12 +40,17 @@ export function createBallKick(scene, avatar, onLanded) {
     startZ = mesh.position.z
     mesh.visible = true
     state = 'flying'
+    boosted = false
     setTrackTarget(mesh.position)
+    fx.kickBurst(mesh.position)
+    fx.maybeSpawnRing(mesh.position, vel)
+    hooks.onLaunch?.(power)
   }
 
   function fly(dt) {
     const p = mesh.position
     const prevZ = p.z
+    prev.x = p.x; prev.y = p.y; prev.z = p.z
     vel.y -= K.gravity * dt
     p.x += vel.x * dt
     p.y += vel.y * dt
@@ -60,13 +70,29 @@ export function createBallKick(scene, avatar, onLanded) {
       vel.z = 0
     }
 
+    // Flying through a BOUNCE! ring boosts the ball up and forward.
+    const ring = fx.passRing(prev, p)
+    if (ring) {
+      vel.y = Math.max(vel.y, 0) + K.bounceUp
+      vel.z *= K.bounceForward
+      boosted = true
+      fx.hitRing(ring)
+      fx.boostBurst(p)
+      hooks.onBounce?.()
+      fx.maybeSpawnRing(p, vel, K.ringChainChance)
+    }
+    fx.trail(p, boosted)
+    hooks.onFly?.(Math.max(0, p.z - startZ), p)
+
     const floor = floorAt(p.x, p.z, p.y)
     if (vel.y < 0 && p.y - K.radius <= floor) {
       p.y = floor + K.radius
       state = 'landed'
       timer = K.landHold
       setTrackTarget(null) // camera eases back at once; the ball resets after landHold
-      onLanded?.(Math.max(0, p.z - startZ))
+      fx.clearRings()
+      fx.landBurst(p, floor)
+      hooks.onLanded?.(Math.max(0, p.z - startZ))
     }
   }
 
@@ -88,6 +114,7 @@ export function createBallKick(scene, avatar, onLanded) {
       return true
     },
     update(dt) {
+      fx.update(dt)
       if (state === 'flying') {
         // Two substeps: a fast ball moves over a metre per frame.
         fly(dt / 2)

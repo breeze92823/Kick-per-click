@@ -12,6 +12,8 @@ Three.js (vanilla) + Vite. Roblox-style clicker: walled stud arena, landmarks, H
 - `src/labels.js`: outlined billboard text sprites (`makeLabel`, `paintText`), repainted when the Fredoka web font loads.
 - `src/stats.js`: progression state (kick power, level, wins, rebirths, balls), localStorage save, `onStats` events. `src/hud.js` + `hud.css`: DOM HUD on a 1920x991 reference grid (`--k`). Cursor stays free (`CONTROLS.pointerLock = false`): world click / F / KICK! = one kick.
 - `src/playerAvatar.js` + `src/avatar/`: Bloxity base rig (`public/avatars/player.glb`) or procedural fallback, equipped cosmetics, proportions, procedural idle/run/airborne/landing animator.
+- Multiplayer/saves: `src/net.js` talks to `../Kick-per-click-backend` (Colyseus room `world`; `VITE_SERVER_URL_DEV`/`_MAIN` per channel, `npm run dev` defaults to `ws://localhost:2567`; empty = `SDK.net.resolveEndpoint(GAME_SLUG)`; neither = offline). It loads the saved doc into `stats` (`hydrateStats`), debounce-saves the `SAVED` keys (never for guests), relays pose/avatar/ball/legend and feeds the hub leaderboards (`landmarks.js` BOARDS). `src/remotePlayers.js` draws the other players from `room.state.players`. Ball/legend ids and `WORLD_BOUNDS` in the backend's `constants.ts` must match `config.js`.
+- CI/CD: `.github/workflows/deploy.yml` builds on PRs and pushes to `main`/`dev`; pushes also upload `dist` to Bloxity hosting (`main` = prod, `dev` = dev channel). Needs repo var/secret `LEGION_GAME_ID` and secret `LEGION_DEPLOY_TOKEN`; optional `SERVER_URL_DEV`/`SERVER_URL_MAIN`. The backend repo has its own workflow.
 - `src/main.js`: renderer, graphics presets (`graphics_quality` setting), loop. Dev console: `__game.teleport(x, y, z)`.
 
 ## Reference docs (consult only when needed)

@@ -1,6 +1,7 @@
 import { Group, Mesh, SphereGeometry } from 'three'
 import { ballMaterial } from './materials.js'
-import { JUGGLE } from './config.js'
+import { BALLS, JUGGLE } from './config.js'
+import { stats } from './stats.js'
 import * as bloxity from './bloxity.js'
 import { player } from './player.js'
 import { inputState } from './input.js'
@@ -37,6 +38,7 @@ export function createPlayerAvatar(scene) {
   heldBall.castShadow = true
   group.add(heldBall)
   const J = JUGGLE
+  let shownBall = -1
 
   // Juggle sequence: release -> right foot -> left foot -> catch. Clicks while one
   // is playing are ignored (the kick itself still scores in hud.doKick).
@@ -144,6 +146,11 @@ export function createPlayerAvatar(scene) {
     update(dt) {
       group.position.set(player.position.x, player.position.y, player.position.z)
       group.rotation.y = player.facing // player.js turns the heading at a fixed rate
+      if (stats.equipped !== shownBall) {
+        shownBall = stats.equipped // the ball in hand is the equipped football
+        const def = BALLS[shownBall] ?? BALLS[0]
+        heldBall.material = ballMaterial(def.color, def.patch)
+      }
       if (seq) stepJuggle(dt)
       if (strike) {
         strike.t += dt

@@ -26,7 +26,7 @@ import {
   TorusGeometry,
 } from 'three'
 import { addCollider } from './colliders.js'
-import { BALL_ROWS, BALLS, BLACK_HOLE_BALL, COLORS, ECONOMY, SITES, TRAINING_FIELDS } from './config.js'
+import { BALL_ROWS, BALLS, COLORS, ECONOMY, SITES, TRAINING_FIELDS } from './config.js'
 import { faceOrigin } from './arena.js'
 import { makeLabel, paintText, whenFontsReady } from './labels.js'
 import { ballMaterial, netMaterial, solid, studMaterial } from './materials.js'
@@ -34,7 +34,8 @@ import { glowTexture, makeCanvas, shade, wheelTexture } from './textures.js'
 import { parkOnPad, player } from './player.js'
 import { inputState } from './input.js'
 import { authState } from './bloxity.js'
-import { fieldUnlocked, formatNumber, onStats, setField, stats, useBall } from './stats.js'
+import { net, onLeaderboard } from './net.js'
+import { ballKick, fieldUnlocked, formatNumber, freeSpinLeft, onStats, setField, stats, tickFreeSpin, useBall } from './stats.js'
 
 const sphere = new SphereGeometry(1, 28, 18)
 const unitBox = new BoxGeometry(1, 1, 1)
@@ -153,6 +154,10 @@ function buildTraining(root, b, mat) {
       for (const entry of fields) if (Math.abs(lx - entry.fx) <= half.w) return entryOf(entry)
       return null
     },
+    setBall(def) {
+      const m = ballMaterial(def.color, def.patch)
+      for (const e of fields) e.ball.material = m
+    },
     // The foot meets the ball on the field the player is parked on: it flies into the goal and returns.
     shoot(field) {
       const entry = fields.find((e) => e.field === field)
@@ -201,10 +206,10 @@ function buildWheel(root, b, mat) {
   site.add(pointer, 0, 4.8 + 3.2, 0.45)
   const label = site.label(timerLines(ECONOMY.freeSpinSeconds), 0, 8.4, 0, { scale: 0.024 })
 
-  const readyAt = performance.now() / 1000 + ECONOMY.freeSpinSeconds
   let shown = -1
   return (t) => {
-    const left = Math.max(0, Math.ceil(readyAt - performance.now() / 1000))
+    tickFreeSpin()
+    const left = freeSpinLeft()
     if (left !== shown) {
       shown = left
       label.setLines(timerLines(left))
@@ -278,9 +283,9 @@ function buildChest(root, b, mat) {
 
 // --- Leaderboards ------------------------------------------------------------------------------------
 const BOARDS = [
-  { title: 'TOP REBIRTHS', head: '#3a6cff', row: '#ffd6ec', alt: '#ffbfe0', value: () => formatNumber(stats.rebirths) },
-  { title: 'TOP LEVELS', head: '#ff9a1a', row: '#fff3a8', alt: '#ffe46a', value: () => formatNumber(stats.level) },
-  { title: 'TOP PLAYTIME', head: '#17a8a0', row: '#c8fff0', alt: '#9af0e0', value: () => playtimeText(stats.playtime) },
+  { key: 'rebirths', title: 'TOP REBIRTHS', head: '#3a6cff', row: '#ffd6ec', alt: '#ffbfe0', own: () => stats.rebirths, format: formatNumber },
+  { key: 'level', title: 'TOP LEVELS', head: '#ff9a1a', row: '#fff3a8', alt: '#ffe46a', own: () => stats.level, format: formatNumber },
+  { key: 'playtime', title: 'TOP PLAYTIME', head: '#17a8a0', row: '#c8fff0', alt: '#9af0e0', own: () => stats.playtime, format: playtimeText },
 ]
 
 function playtimeText(s) {
@@ -316,10 +321,16 @@ function buildLeaderboards(root, b, mat) {
         const y = 72 + r * 48
         g.fillStyle = r % 2 ? board.alt : board.row
         g.fillRect(6, y, 368, 44)
-        const mine = r === 0
+        const row = net.leaderboard[board.key]?.[r]
         paintText(g, `${r + 1}.`, 16, y + 23, 24, 'white', '#1b1b26', 'left')
-        paintText(g, mine ? name.slice(0, 14) : '---', 58, y + 23, 24, 'white', '#1b1b26', 'left')
-        if (mine) paintText(g, board.value(), 362, y + 23, 24, 'gold', '#1b1b26', 'right')
+        if (row) {
+          paintText(g, String(row.name).slice(0, 14), 58, y + 23, 24, 'white', '#1b1b26', 'left')
+          paintText(g, board.format(row.value), 362, y + 23, 24, 'gold', '#1b1b26', 'right')
+        } else if (!net.connected && r === 0) {
+          // Offline: the board shows just this player.
+          paintText(g, name.slice(0, 14), 58, y + 23, 24, 'white', '#1b1b26', 'left')
+          paintText(g, board.format(board.own()), 362, y + 23, 24, 'gold', '#1b1b26', 'right')
+        } else paintText(g, '---', 58, y + 23, 24, 'white', '#1b1b26', 'left')
       }
       tex.needsUpdate = true
     }
@@ -442,9 +453,26 @@ function buildChili(root, b) {
 
 // --- Upgrade hill ---------------------------------------------------------------------------------------------
 function ballLines(i) {
-  const top = stats.equipped === i ? 'Equipped' : stats.owned.includes(i) ? 'Equip' : `${formatNumber(BALLS[i].cost)} Wins`
+  // Status line like Stone-Skipping's stones: EQUIPPED / PRESS E TO EQUIP / PRESS E TO BUY / LOCKED.
+  const top =
+    stats.equipped === i
+      ? { text: 'EQUIPPED', fill: 'gold' }
+      : stats.owned.includes(i)
+        ? { text: 'PRESS E TO EQUIP', fill: '#3cff55' }
+        : stats.wins >= BALLS[i].cost
+          ? { text: 'PRESS E TO BUY', fill: 'gold' }
+          : { text: 'LOCKED', fill: '#ff2d2d' }
+  if (BALLS[i].blackHole) {
+    return [
+      { text: 'BLACK HOLE BALL', px: 24, fill: 'purple' },
+      { ...top, px: 20 },
+      { text: `${formatNumber(BALLS[i].cost)} Wins`, px: 22, fill: 'white' },
+      { text: `+${formatNumber(ballKick(i))} Kick (2X BEST BALL)`, px: 18, fill: 'gold' },
+    ]
+  }
   return [
-    { text: top, px: 26 },
+    { ...top, px: 20 },
+    { text: `${formatNumber(BALLS[i].cost)} Wins`, px: 22, fill: 'white' },
     { text: `+${BALLS[i].kick} Kick`, px: 24, fill: 'gold' },
   ]
 }
@@ -494,18 +522,9 @@ function buildUpgrades(root, b, mat) {
         halo.scale.setScalar(3.2)
         site.add(halo, lx, y, lz)
         spinners.push({ mesh: ring, y, phase: 0, ring: true })
-        site.label(
-          [
-            { text: 'BLACK HOLE BALL', px: 24, fill: 'purple' },
-            { text: String(BLACK_HOLE_BALL.price), px: 26, fill: 'gold', icon: 'gem' },
-            { text: 'ALWAYS 2X YOUR BEST BALL', px: 18, fill: 'gold' },
-          ],
-          lx,
-          top + 2.0,
-          lz,
-          { scale: 0.022 },
-        )
-        pads.push({ i: -1, blackHole: true, wx, wz, top })
+        const i = BALLS.length - 1
+        const label = site.label(ballLines(i), lx, top + 2.0, lz, { scale: 0.022 })
+        pads.push({ i, label, wx, wz, top })
       } else {
         const i = index++
         const m = site.add(ball(BALLS[i].color, BALLS[i].patch, 0.55), lx, y, lz)
@@ -517,7 +536,7 @@ function buildUpgrades(root, b, mat) {
   })
 
   onStats((what) => {
-    if (what === 'balls' || what === 'rebirth') for (const p of pads) if (p.i >= 0) p.label.setLines(ballLines(p.i))
+    if (what === 'balls' || what === 'wins' || what === 'rebirth') for (const p of pads) p.label.setLines(ballLines(p.i))
   })
 
   return {
@@ -610,16 +629,21 @@ function buildBeachPortal(root, b, mat) {
 }
 
 // --- Assembly --------------------------------------------------------------------------------------------------------
-export function createLandmarks(scene, b) {
+export function createLandmarks(scene, b, onResult = () => {}) {
   const root = new Group()
   scene.add(root)
   const mat = studMaterial()
   const training = buildTraining(root, b, mat)
+  onStats((what) => {
+    if (what === 'balls') training.setBall(BALLS[stats.equipped] ?? BALLS[0]) // pad balls show the equipped football
+  })
+  training.setBall(BALLS[stats.equipped] ?? BALLS[0])
   let parkedField = null // the unlocked field the player was last parked on (re-parks only after leaving it)
   const wheel = buildWheel(root, b, mat)
   buildSignBoard(root, b, mat)
   buildChest(root, b, mat)
   const repaintBoards = buildLeaderboards(root, b, mat)
+  onLeaderboard(repaintBoards) // server rows arrive every few seconds
   buildNoob(root, b)
   buildChili(root, b)
   const upgrades = buildUpgrades(root, b, mat)
@@ -632,6 +656,8 @@ export function createLandmarks(scene, b) {
 
   return {
     shootTrainingBall: () => parkedField && training.shoot(parkedField),
+    // True while the player stands on the wheel's glowing pad (opens the Lucky Wheel window).
+    atWheel: () => Math.hypot(player.position.x - SITES.wheel.x, player.position.z - SITES.wheel.z) < 4.4 && player.position.y < 2,
     // Returns the HUD prompt for where the player stands (or null).
     update(dt, t) {
       wheel(t)
@@ -655,15 +681,19 @@ export function createLandmarks(scene, b) {
         parkedField = parkable
         if (parkable) parkOnPad(under.x, under.z) // walks to the spot, faces the goal; kicks animate on click
       }
-      if (field) return fieldUnlocked(field) ? `Training: ${field.name} per click` : `Needs ${field.rebirths} Rebirths`
+      if (field) return fieldUnlocked(field) ? `Training: ${field.name} - Auto Kick` : `Needs ${field.rebirths} Rebirths`
 
       const pad = upgrades.padAt(player.position)
       if (pad) {
-        if (pad.blackHole) return 'Black Hole Ball: coming soon'
-        if (interact) useBall(pad.i)
+        if (interact) {
+          const r = useBall(pad.i)
+          if (r === 'unlocked') onResult(`Ball Purchased! +${formatNumber(ballKick(pad.i))} Kick`, true)
+          else if (r === 'equipped') onResult('Ball Equipped', true)
+          else if (r === 'locked') onResult(`Need ${formatNumber(BALLS[pad.i].cost)} Wins to Buy`, false)
+        }
         if (stats.equipped === pad.i) return 'Equipped'
         if (stats.owned.includes(pad.i)) return 'Press E to equip'
-        if (stats.wins >= BALLS[pad.i].cost) return 'Press E to unlock'
+        if (stats.wins >= BALLS[pad.i].cost) return 'Press E to buy'
         return `Needs ${formatNumber(BALLS[pad.i].cost)} Wins`
       }
       return null

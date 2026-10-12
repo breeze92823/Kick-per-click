@@ -24,8 +24,16 @@ let armed = false
 
 const locked = () => !!canvas && document.pointerLockElement === canvas
 // Pointer lock can reject (sandboxed frame, post-Escape cooldown); that is not a fault.
+let windowOpen = false
+// A HUD window is open: hand the cursor back and refuse to retake it until it closes.
+export function setWindowOpen(on) {
+  windowOpen = on
+  if (on && locked()) document.exitPointerLock?.()
+  orbiting = false
+}
+
 function requestLock() {
-  if (!CONTROLS.pointerLock || !canvas || locked()) return
+  if (windowOpen || !CONTROLS.pointerLock || !canvas || locked()) return
   const r = canvas.requestPointerLock?.()
   if (r instanceof Promise) r.catch(() => {})
 }

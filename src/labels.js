@@ -71,6 +71,12 @@ function roundRect(g, x, y, w, h, r) {
   g.closePath()
 }
 
+const rebirthImg = new Image()
+if (typeof document !== 'undefined') {
+  rebirthImg.onload = () => painters.forEach((fn) => fn())
+  rebirthImg.src = `${import.meta.env.BASE_URL}ui/rebirth.png`
+}
+
 // Small icons drawn inline with text: 'gem' (premium currency) and 'rebirth'.
 export function paintIcon(g, kind, cx, cy, s) {
   g.lineJoin = 'round'
@@ -94,36 +100,8 @@ export function paintIcon(g, kind, cx, cy, s) {
     g.fill()
     return
   }
-  // Rebirth: a red and a blue arrow chasing round a circle.
-  const r = s * 0.32
-  const arrow = (a0, a1, color) => {
-    for (const [lw, st] of [[s * 0.3, INK], [s * 0.16, color]]) {
-      g.lineWidth = lw
-      g.strokeStyle = st
-      g.beginPath()
-      g.arc(cx, cy, r, a0, a1)
-      g.stroke()
-    }
-    const ex = cx + Math.cos(a1) * r
-    const ey = cy + Math.sin(a1) * r
-    const tx = -Math.sin(a1)
-    const ty = Math.cos(a1)
-    const nx = Math.cos(a1)
-    const ny = Math.sin(a1)
-    const k = s * 0.2
-    g.beginPath()
-    g.moveTo(ex + tx * k * 1.3, ey + ty * k * 1.3)
-    g.lineTo(ex + nx * k, ey + ny * k)
-    g.lineTo(ex - nx * k, ey - ny * k)
-    g.closePath()
-    g.fillStyle = color
-    g.lineWidth = s * 0.07
-    g.strokeStyle = INK
-    g.stroke()
-    g.fill()
-  }
-  arrow(Math.PI * 1.05, Math.PI * 1.8, '#ff3b4e')
-  arrow(Math.PI * 0.05, Math.PI * 0.8, '#3aa0ff')
+  // Rebirth: the shared HUD icon image (repaints once it has loaded).
+  if (rebirthImg.complete && rebirthImg.naturalWidth) g.drawImage(rebirthImg, cx - s / 2, cy - s / 2, s, s)
 }
 
 function measure(g, line) {

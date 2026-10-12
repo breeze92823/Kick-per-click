@@ -7,6 +7,22 @@ export const GAME_TITLE = 'Kick per Click'
 // Forces the Bloxity SDK and avatar CDN to be treated as unavailable (see .env.example).
 export const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
 
+// Colyseus game server (Kick-per-click-backend), one URL per Bloxity Legion channel: `npm run build`
+// (production) reads _MAIN, `npm run dev` and `npm run build:dev` read _DEV (`npm run dev` defaults to
+// the local server). Empty = net.js asks the Bloxity SDK for the channel's endpoint; with no SDK either
+// the game is offline (localStorage saving only, no other players).
+const SERVER_URL_DEV = import.meta.env.VITE_SERVER_URL_DEV || (import.meta.env.DEV ? 'ws://localhost:2567' : '')
+const SERVER_URL_MAIN = import.meta.env.VITE_SERVER_URL_MAIN || ''
+export const SERVER_URL = import.meta.env.MODE === 'production' ? SERVER_URL_MAIN : SERVER_URL_DEV
+export const NET = {
+  poseHz: 15, // pose messages per second
+  saveDebounce: 1.5, // s of quiet after a state change before saving
+  saveMaxWait: 8, // s: a continuous change stream (kicking) still saves this often
+  remoteLerp: 12, // 1/s: how fast remote players ease toward their last reported pose
+  remoteFade: 120, // m: remote players further away than this are hidden
+  maxRemotes: 24, // drawn at once (nearest first)
+}
+
 // --- World (metres: +X east, +Z south, +Y up) -------------------------------
 export const GROUND_Y = 0
 export const GROUND_SIZE = 440 // square stud-plate ground, centred on the origin
@@ -139,6 +155,18 @@ export const KICKBALL = {
   viewPitch: 0.2, // kick view (as Stone-Skipping's throw view): radians above the horizon
   viewDistance: 10, // m behind the player
   viewYawOffset: Math.PI / 6, // rotation about Y from directly behind
+  // Random BOUNCE! rings on the flight path: fly through one for a boost.
+  ringChance: 0.7, // chance a ring appears on the first arc
+  ringChainChance: 0.45, // chance of another ring after a bounce
+  ringRadius: 1.7, // m
+  bounceUp: 11, // m/s added upward on a bounce
+  bounceForward: 1.3, // forward speed multiplier on a bounce
+  ratings: [ // aim-meter power thresholds (0..1) -> banner text
+    { min: 0.9, text: 'PERFECT!', tier: 'perfect' },
+    { min: 0.65, text: 'GREAT!', tier: 'great' },
+    { min: 0.35, text: 'GOOD!', tier: 'good' },
+    { min: 0, text: 'OK', tier: 'ok' },
+  ],
 }
 
 export const ECONOMY = {
@@ -148,13 +176,28 @@ export const ECONOMY = {
   // rebirthLevels[r - 1], then +rebirthLevelStep per rebirth past the table.
   rebirthLevels: [20, 40, 60, 80, 100, 125, 150],
   rebirthLevelStep: 25,
-  multPerRebirth: 1, // permanent multiplier is 1 + multPerRebirth * rebirths (x1, x2, x3...), like Stone-Skipping
+  multPerRebirth: 0.2, // permanent multiplier is 1 + multPerRebirth * rebirths (x1, x1.2, x1.4...)
   // Wins for a kick grow exponentially with distance: winsMax at laneLength metres.
   laneLength: 150,
   winsMax: 300,
   winsCurve: 5, // higher = flatter start, steeper finish
   autoClickInterval: 0.25, // s between automatic kicks
+  padKickInterval: 2, // s between the automatic kicks while standing on a training pad
+  kickCooldown: 0.35, // s a manual click/F/KICK! must wait after the last kick (anti spam-click); Auto Kick is exempt
   freeSpinSeconds: 15 * 60,
+  invSlots: 2, // legends the inventory holds at the start
+  invSlotCost: 2000, // wins for the first extra slot; each further slot costs 2x more (2000, 4000, 8000...)
+  // Lucky Wheel slices, clockwise from the pointer. `chance` is in percent and sums to 100.
+  wheelPrizes: [
+    { label: '+30 Wins', kind: 'wins', amount: 30, chance: 17, color: '#35b6ff', icon: 'trophy' },
+    { label: '+150 Kick', kind: 'kick', amount: 150, chance: 20, color: '#5fdc3a', icon: 'shoe' },
+    { label: '+500 Wins', kind: 'wins', amount: 500, chance: 2.5, color: '#a45cf0', icon: 'trophy' },
+    { label: '+40 Kick', kind: 'kick', amount: 40, chance: 30.4, color: '#ffb73a', icon: 'shoe' },
+    { label: '+150 Wins', kind: 'wins', amount: 150, chance: 10, color: '#35b6ff', icon: 'trophy' },
+    { label: 'RONALDU', kind: 'legend', id: 'ronaldu', chance: 0.1, color: '#5fdc3a', icon: 'legend' },
+    { label: 'x2 Kick', kind: 'kick2x', chance: 8, color: '#a45cf0', icon: 'shoe' },
+    { label: '+1 Spin', kind: 'spin', amount: 1, chance: 12, color: '#ffc83a', icon: 'spin' },
+  ],
 }
 
 // Training goals, west to east. `rebirths` gates a field; `pass` fields show a pass banner.
@@ -163,8 +206,8 @@ export const TRAINING_FIELDS = [
   { name: 'x5 Kick', mult: 5, rebirths: 5, color: '#ff5fa8' },
   { name: 'x2 Kick', mult: 2, rebirths: 2, color: '#2f8cff' },
   { name: 'x8 Kick', mult: 8, rebirths: 10, color: '#23cfe6' },
-  { name: 'x80 Kick', mult: 80, rebirths: 0, pass: 'ULTRA', color: '#4fe03a' },
-  { name: 'x40 Kick', mult: 40, rebirths: 0, pass: 'VIP', color: '#ffd21f' },
+  { name: 'x80 Kick', mult: 80, rebirths: 50, pass: 'ULTRA', color: '#4fe03a' },
+  { name: 'x40 Kick', mult: 40, rebirths: 25, pass: 'VIP', color: '#ffd21f' },
 ]
 
 // Footballs on the upgrade hill: rows of 6, 6 and 8 (front to back). `cost` is
@@ -190,9 +233,11 @@ export const BALLS = [
   { cost: 25000, kick: 44, color: '#f8e030', patch: '#3a3008' },
   { cost: 34000, kick: 49, color: '#ffc020', patch: '#3a2a06' },
   { cost: 44000, kick: 56, color: '#ff3030', patch: '#3a0606' },
+  // Last entry: the Black Hole ball. Its kick is always 2x your best other ball (see ballKick in
+  // stats.js); `kick` is only a floor. ~3.4x the last ball's cost since it doubles the best ball.
+  { cost: 150000, kick: 2, color: '#07070c', patch: '#ff7a1a', blackHole: true },
 ]
-export const BALL_ROWS = [6, 6, 8]
-export const BLACK_HOLE_BALL = { price: 349 }
+export const BALL_ROWS = [6, 6, 8] // regular footballs only; the Black Hole ball sits after them in the front row
 
 // Hemisphere fill + one shadow-casting sun that follows the player (world.js).
 export const LIGHT = {
@@ -359,3 +404,21 @@ export function coerceSetting(key, raw) {
   const n = Number(value)
   return clamp(Number.isFinite(n) ? n : Number(spec.def), spec.min, spec.max)
 }
+
+// Legends: the equipped one multiplies wins from kicks. Costs are paid in wins and
+// scale roughly with the multiplier (Chilli and Ronaldu extrapolated from the curve).
+export const LEGENDS = [
+  { id: 'chilli', name: 'Chillin Chilli', mult: 100, cost: 5e17, limited: true, left: '751 / 1000 left' },
+  { id: 'ronaldu', tier: 'Divine', name: 'Ronaldu', mult: 50, cost: 2e12 },
+  { id: 'cancello', tier: 'Common', name: 'Cancello', mult: 1, cost: 0 },
+  { id: 'pogbo', tier: 'Rare', name: 'Pogbo', mult: 2, cost: 5500 },
+  { id: 'kvarra', tier: 'Rare', name: 'Kvarra', mult: 3, cost: 18000 },
+  { id: 'neymer', tier: 'Epic', name: 'Neymer', mult: 5, cost: 95000 },
+  { id: 'vinny', tier: 'Legendary', name: 'Vinny Jr', mult: 8, cost: 2.25e6 },
+  { id: 'sallah', tier: 'Legendary', name: 'Sallah', mult: 12, cost: 6.5e6 },
+  { id: 'yamol', tier: 'Divine', name: 'Yamol', mult: 20, cost: 20e6 },
+  { id: 'beckhem', tier: 'Divine', name: 'Beckhem', mult: 30, cost: 1e9 },
+  { id: 'kruyf', tier: 'Divine', name: 'Kruyf', mult: 40, cost: 100e9 },
+  { id: 'debruyn', tier: 'Divine', name: 'De Bruyn', mult: 60, cost: 20e12 },
+  { id: 'haalando', tier: 'Divine', name: 'Haalando', mult: 75, cost: 10e15 },
+]
