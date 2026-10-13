@@ -2,7 +2,7 @@
 // arena, the long kick lane to the south, curbed lawns, the football spawn pad
 // and voxel trees. Everything goes into the voxel builder (one mesh per material).
 import { addCollider } from './colliders.js'
-import { ARENA, COLORS, LAWNS, SITES, SPAWN_PAD_RADIUS, clamp } from './config.js'
+import { ARENA, COLORS, LANE, LANE_THEMES, LAWNS, SITES, SPAWN_PAD_RADIUS, clamp } from './config.js'
 import { studMaterial } from './materials.js'
 import { mulberry32, pentagonAxis, soccerPanel } from './textures.js'
 
@@ -22,7 +22,8 @@ export function buildArena(b) {
 // --- Cliffs ------------------------------------------------------------------------
 // One straight, axis-aligned cliff from (x0, z0) to (x1, z1); (nx, nz) points into
 // the play area. Columns step up and down; the outer ring stands taller.
-function cliffRun(b, mat, rand, x0, z0, x1, z1, nx, nz, heights, drop = 0) {
+function cliffRun(b, mat, rand, x0, z0, x1, z1, nx, nz, heights, drop = 0, pal = {}) {
+  const { wall = COLORS.wall, cap = COLORS.grass, capDark = COLORS.grassDark, tree } = pal
   const alongX = z0 === z1
   const len = Math.abs(alongX ? x1 - x0 : z1 - z0)
   const n = Math.max(1, Math.round(len / ARENA.column))
@@ -43,10 +44,10 @@ function cliffRun(b, mat, rand, x0, z0, x1, z1, nx, nz, heights, drop = 0) {
       const bz = cz - nz * (t / 2 + ring * t)
       const w = alongX ? colW : t
       const d = alongX ? t : colW
-      b.box(mat, bx, (hh - drop) / 2, bz, w, hh + drop, d, COLORS.wall)
+      b.box(mat, bx, (hh - drop) / 2, bz, w, hh + drop, d, wall)
       if (ring === 0) addCollider(bx, bz, w, d, hh, 0, -drop)
       // Grass cap with a lip over the inner face, and drips hanging off it.
-      b.box(mat, bx + (nx * lip) / 2, hh, bz + (nz * lip) / 2, w + Math.abs(nx) * lip, 1.2, d + Math.abs(nz) * lip, COLORS.grass)
+      b.box(mat, bx + (nx * lip) / 2, hh, bz + (nz * lip) / 2, w + Math.abs(nx) * lip, 1.2, d + Math.abs(nz) * lip, cap)
       const faceX = cx - nx * ring * t + nx * 0.25
       const faceZ = cz - nz * ring * t + nz * 0.25
       const drips = 1 + Math.floor(rand() * 3)
@@ -54,9 +55,9 @@ function cliffRun(b, mat, rand, x0, z0, x1, z1, nx, nz, heights, drop = 0) {
         const dw = 0.8 + rand() * 1.4
         const dl = 0.8 + rand() * 3.2
         const u = (rand() - 0.5) * (colW - dw)
-        b.box(mat, faceX + ux * u, hh - 0.6 - dl / 2, faceZ + uz * u, alongX ? dw : 0.5, dl, alongX ? 0.5 : dw, rand() < 0.5 ? COLORS.grass : COLORS.grassDark)
+        b.box(mat, faceX + ux * u, hh - 0.6 - dl / 2, faceZ + uz * u, alongX ? dw : 0.5, dl, alongX ? 0.5 : dw, rand() < 0.5 ? cap : capDark)
       }
-      if (ring === 1 && rand() < 0.25) roundTree(b, mat, rand, bx, hh + 0.6, bz, 1.1 + rand() * 0.4)
+      if (ring === 1 && rand() < 0.25) roundTree(b, mat, rand, bx, hh + 0.6, bz, 1.1 + rand() * 0.4, tree)
     }
   }
 }
@@ -69,29 +70,47 @@ function buildWalls(b, mat, rand) {
   cliffRun(b, mat, rand, minX, maxZ, minX, minZ, 1, 0, wallHeight) // west
   cliffRun(b, mat, rand, minX - e, maxZ, lane.minX, maxZ, 0, -1, wallHeight) // south, west of the lane
   cliffRun(b, mat, rand, lane.maxX, maxZ, maxX + e, maxZ, 0, -1, wallHeight) // south, east of the lane
-  cliffRun(b, mat, rand, lane.minX, maxZ, lane.minX, lane.endZ, 1, 0, lane.wallHeight, lane.drop)
-  cliffRun(b, mat, rand, lane.maxX, maxZ, lane.maxX, lane.endZ, -1, 0, lane.wallHeight, lane.drop)
-  cliffRun(b, mat, rand, lane.minX - e, lane.endZ, lane.maxX + e, lane.endZ, 0, -1, { min: 6, max: 10 }, lane.drop)
+  // Lane walls, one run per section so each takes its section's colours.
+  for (let i = 0; i < LANE.sections; i++) {
+    const z0 = sectionStart(i)
+    const z1 = sectionStart(i + 1)
+    const pal = themeOf(i)
+    cliffRun(b, mat, rand, lane.minX, z0, lane.minX, z1, 1, 0, lane.wallHeight, lane.drop, pal)
+    cliffRun(b, mat, rand, lane.maxX, z0, lane.maxX, z1, -1, 0, lane.wallHeight, lane.drop, pal)
+  }
+  cliffRun(b, mat, rand, lane.minX - e, lane.endZ, lane.maxX + e, lane.endZ, 0, -1, { min: 6, max: 10 }, lane.drop, themeOf(LANE.sections - 1))
 }
 
+// Section i spans [sectionStart(i), sectionStart(i + 1)] along z; it matches ZONES[i] on the HUD bar.
+export const sectionStart = (i) => LANE.originZ + i * LANE.sectionLength
+const themeOf = (i) => LANE_THEMES[i]
+
 // --- Kick lane -------------------------------------------------------------------------
-// A long grass run with an orange path down the middle, curbs and tree rows.
+// LANE.sections equal sections, one per HUD zone, each with its own lawns, centre path, trees and
+// wall colours (see laneSections.js for the boundary labels).
 function buildLane(b, mat, rand) {
   const { maxZ, lane } = ARENA
-  const start = maxZ + RAMP_LEN
-  const len = lane.endZ - start
   const cx = (lane.minX + lane.maxX) / 2
-  const cz = (start + lane.endZ) / 2
   const pathW = 8
   const side = (lane.maxX - lane.minX - pathW) / 2 - 1.4
   const dy = -lane.drop
-  lawn(b, mat, rand, [[lane.minX + 0.7 + side / 2, cz, side, len - 1.4]], 0, dy)
-  lawn(b, mat, rand, [[lane.maxX - 0.7 - side / 2, cz, side, len - 1.4]], 0, dy)
   buildRamp(b, mat)
-  for (let z = start + 8, i = 0; z < lane.endZ - 6; z += 12, i++) {
-    for (const x of [lane.minX + 3.5, lane.maxX - 3.5]) {
-      if ((i + (x < cx ? 0 : 1)) % 2) pineTree(b, mat, rand, x, 0.14 + dy, z, 1 + rand() * 0.3)
-      else roundTree(b, mat, rand, x, 0.14 + dy, z, 0.9 + rand() * 0.3)
+  for (let i = 0; i < LANE.sections; i++) {
+    const th = LANE_THEMES[i]
+    const z0 = i === 0 ? maxZ + RAMP_LEN : sectionStart(i)
+    const z1 = sectionStart(i + 1)
+    const len = z1 - z0
+    const cz = (z0 + z1) / 2
+    const pal = { lawn: th.lawn, curb: th.curb, tuft: th.tuft, rock: th.rock }
+    lawn(b, mat, rand, [[lane.minX + 0.7 + side / 2, cz, side, len - 1.4]], 0, dy, pal)
+    lawn(b, mat, rand, [[lane.maxX - 0.7 - side / 2, cz, side, len - 1.4]], 0, dy, pal)
+    if (th.path) b.box(mat, cx, dy + 0.02, cz, pathW, 0.04, len - 0.4, th.path) // visual only: the floor is already walkable
+    for (let z = z0 + 8, k = 0; z < z1 - 4; z += 12, k++) {
+      for (const x of [lane.minX + 3.5, lane.maxX - 3.5]) {
+        const pine = th.tree.kind === 'pine' || (th.tree.kind === 'mix' && (k + (x < cx ? 0 : 1)) % 2)
+        if (pine) pineTree(b, mat, rand, x, 0.14 + dy, z, 1 + rand() * 0.3, th.tree)
+        else roundTree(b, mat, rand, x, 0.14 + dy, z, 0.9 + rand() * 0.3, th.tree)
+      }
     }
   }
 }
@@ -117,13 +136,14 @@ function buildRamp(b, mat) {
 // --- Lawns ---------------------------------------------------------------------------------
 // Flush grass slab(s) inside a thin orange outline (the outline is every rect grown by
 // `rim`, so stepped shapes get one continuous border), dotted with tufts and blue rocks.
-function lawn(b, mat, rand, rects, rot = 0, dy = 0) {
+function lawn(b, mat, rand, rects, rot = 0, dy = 0, pal = {}) {
+  const { lawn: lawnColor = COLORS.lawn, curb = COLORS.curb } = pal
   const rim = 0.45
   const c = Math.cos(rot)
   const s = Math.sin(rot)
   for (const [x, z, w, d] of rects) {
-    b.box(mat, x, 0.05 + dy, z, w + 2 * rim, 0.1, d + 2 * rim, COLORS.curb, rot)
-    b.box(mat, x, 0.07 + dy, z, w, 0.14, d, COLORS.lawn, rot)
+    b.box(mat, x, 0.05 + dy, z, w + 2 * rim, 0.1, d + 2 * rim, curb, rot)
+    b.box(mat, x, 0.07 + dy, z, w, 0.14, d, lawnColor, rot)
     addCollider(x, z, w, d, 0.14 + dy, rot, dy)
   }
   for (const [x, z, w, d] of rects) {
@@ -134,8 +154,8 @@ function lawn(b, mat, rand, rects, rot = 0, dy = 0) {
       const px = x + c * lx + s * lz
       const pz = z - s * lx + c * lz
       if (!clearOfSites(px, pz, 5)) continue
-      if (rand() < 0.7) tuft(b, mat, rand, px, pz, dy)
-      else rocks(b, mat, rand, px, pz, dy)
+      if (rand() < 0.7) tuft(b, mat, rand, px, pz, dy, pal.tuft)
+      else rocks(b, mat, rand, px, pz, dy, pal.rock)
     }
   }
 }
@@ -148,19 +168,19 @@ function buildKickStrip(b, mat) {
   b.box(mat, (minX + maxX) / 2, KICK_STRIP_H / 2, maxZ - 4.5 + 0.005, maxX - minX, KICK_STRIP_H, 9.01, COLORS.sand)
 }
 
-function tuft(b, mat, rand, x, z, dy = 0) {
+function tuft(b, mat, rand, x, z, dy = 0, cols = [COLORS.grassDark, COLORS.leaf]) {
   const blades = 3 + Math.floor(rand() * 3)
   for (let i = 0; i < blades; i++) {
     const h = 0.5 + rand() * 0.7
-    b.box(mat, x + (rand() - 0.5) * 0.7, 0.14 + dy + h / 2, z + (rand() - 0.5) * 0.7, 0.18, h, 0.18, rand() < 0.5 ? COLORS.grassDark : COLORS.leaf, rand() * Math.PI)
+    b.box(mat, x + (rand() - 0.5) * 0.7, 0.14 + dy + h / 2, z + (rand() - 0.5) * 0.7, 0.18, h, 0.18, rand() < 0.5 ? cols[0] : cols[1], rand() * Math.PI)
   }
 }
 
-function rocks(b, mat, rand, x, z, dy = 0) {
+function rocks(b, mat, rand, x, z, dy = 0, cols = [COLORS.rock, '#93acec']) {
   const n = 2 + Math.floor(rand() * 3)
   for (let i = 0; i < n; i++) {
     const s = 0.5 + rand() * 0.6
-    b.box(mat, x + (rand() - 0.5) * 1.4, 0.14 + dy + s / 2, z + (rand() - 0.5) * 1.4, s, s, s, i % 2 ? COLORS.rock : '#93acec', rand())
+    b.box(mat, x + (rand() - 0.5) * 1.4, 0.14 + dy + s / 2, z + (rand() - 0.5) * 1.4, s, s, s, i % 2 ? cols[0] : cols[1], rand())
   }
 }
 
@@ -202,14 +222,15 @@ function buildSpawnPad(b, mat) {
 
 // --- Trees ---------------------------------------------------------------------------------------
 // Topiary tree: thin trunk through three stacked, rounded leaf blobs.
-export function roundTree(b, mat, rand, x, y0, z, s = 1) {
+export function roundTree(b, mat, rand, x, y0, z, s = 1, pal = {}) {
+  const { leaf = COLORS.leaf, leafDark = COLORS.leafDark, trunk = COLORS.trunk } = pal
   const trunkH = 7 * s
-  b.box(mat, x, y0 + trunkH / 2, z, 0.7 * s, trunkH, 0.7 * s, COLORS.trunk)
+  b.box(mat, x, y0 + trunkH / 2, z, 0.7 * s, trunkH, 0.7 * s, trunk)
   for (let k = 0; k < 3; k++) {
     const size = (3.6 - k * 0.95) * s
     const y = y0 + (2.8 + k * 2.3) * s
     const h = 1.7 * s
-    const col = (k + Math.floor(rand() * 2)) % 2 ? COLORS.leafDark : COLORS.leaf
+    const col = (k + Math.floor(rand() * 2)) % 2 ? leafDark : leaf
     b.box(mat, x, y, z, size, h, size, col)
     b.box(mat, x, y, z, size + 0.8 * s, h * 0.6, size - 0.8 * s, col)
     b.box(mat, x, y, z, size - 0.8 * s, h * 0.6, size + 0.8 * s, col)
@@ -217,13 +238,14 @@ export function roundTree(b, mat, rand, x, y0, z, s = 1) {
   if (y0 < 1) addCollider(x, z, 0.7 * s, 0.7 * s, y0 + trunkH)
 }
 
-export function pineTree(b, mat, rand, x, y0, z, s = 1) {
-  b.box(mat, x, y0 + 1.2 * s, z, 0.9 * s, 2.4 * s, 0.9 * s, COLORS.trunk)
+export function pineTree(b, mat, rand, x, y0, z, s = 1, pal = {}) {
+  const { leaf = COLORS.pine, leafDark = COLORS.pineDark, trunk = COLORS.trunk } = pal
+  b.box(mat, x, y0 + 1.2 * s, z, 0.9 * s, 2.4 * s, 0.9 * s, trunk)
   for (let k = 0; k < 5; k++) {
     const size = (4.4 - k * 0.85) * s
-    b.box(mat, x, y0 + (2.4 + k * 1.15) * s, z, size, 1.3 * s, size, k % 2 ? COLORS.pineDark : COLORS.pine)
+    b.box(mat, x, y0 + (2.4 + k * 1.15) * s, z, size, 1.3 * s, size, k % 2 ? leafDark : leaf)
   }
-  b.box(mat, x, y0 + 8.4 * s, z, 0.6 * s, 0.8 * s, 0.6 * s, COLORS.pine)
+  b.box(mat, x, y0 + 8.4 * s, z, 0.6 * s, 0.8 * s, 0.6 * s, leaf)
   if (y0 < 1) addCollider(x, z, 0.9 * s, 0.9 * s, y0 + 8 * s)
 }
 

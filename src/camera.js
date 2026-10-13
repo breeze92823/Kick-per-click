@@ -2,7 +2,7 @@ import { inputState } from './input.js'
 import { player, floorAt } from './player.js'
 import { segmentClear } from './colliders.js'
 import { Quaternion, Vector3 } from 'three'
-import { CAMERA, KICKBALL, PHYSICS } from './config.js'
+import { ARENA, CAMERA, KICKBALL, PHYSICS } from './config.js'
 
 // Third-person chase camera, ported from +1 Cut Grass Adventure. It owns its own
 // yaw/pitch (right-drag) and orbits the player, so the movement keys never steer
@@ -56,6 +56,9 @@ const lastPos = new Vector3() // pose at the end of the previous frame
 const lastQuat = new Quaternion()
 const chaseQuat = new Quaternion()
 let returning = false
+// Ball cam state (see CAMERA.ballCam): a smoothed copy of the ball, blended in from the chase pose.
+const bc = { active: false, t: 0, speed: 0, fovExtra: 0, pos: new Vector3(), prev: new Vector3(), startPos: new Vector3(), startQuat: new Quaternion() }
+const bcLook = new Vector3()
 const POSITION_SMOOTHING = 12
 const LOOK_SMOOTHING = 20
 
@@ -68,6 +71,7 @@ export function setTrackTarget(target) {
   returning = !target
   tracked = target
   frozen.hasPose = false
+  bc.active = false
 }
 
 // Swings the orbit to the throw view: behind the player, rotated, low and close.
@@ -93,6 +97,46 @@ export function exitAimView() {
 }
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v)
+
+// Low chase view behind the ball. Reads the chase pose already on `camera` as the blend start.
+function applyBallCam(camera, dt) {
+  const B = CAMERA.ballCam
+  if (!bc.active) {
+    bc.active = true
+    bc.t = 0
+    bc.speed = 0
+    bc.pos.copy(tracked)
+    bc.prev.copy(tracked)
+    bc.startPos.copy(camera.position)
+    bc.startQuat.copy(camera.quaternion)
+  }
+  if (dt > 0) {
+    const inst = bc.prev.distanceTo(tracked) / dt
+    bc.speed += (inst - bc.speed) * (1 - Math.exp(-6 * dt))
+    const kxz = 1 - Math.exp(-B.followXZ * dt)
+    const ky = 1 - Math.exp(-B.followY * dt)
+    bc.pos.x += (tracked.x - bc.pos.x) * kxz
+    bc.pos.z += (tracked.z - bc.pos.z) * kxz
+    bc.pos.y += (tracked.y - bc.pos.y) * ky
+  }
+  bc.prev.copy(tracked)
+
+  // Lane runs down +Z; stay inside the walls and above the ground.
+  const maxX = ARENA.lane.maxX - B.laneMargin
+  const cx = clamp(bc.pos.x, -maxX, maxX)
+  const cz = bc.pos.z - B.distance
+  const cy = Math.max(bc.pos.y + B.height, floorAt(cx, cz) + FLOOR_MARGIN + 0.5)
+  camera.position.set(cx, cy, cz)
+  bcLook.set(clamp(bc.pos.x, -maxX, maxX), bc.pos.y + B.lookRise, bc.pos.z + B.lookAhead)
+  camera.lookAt(bcLook)
+
+  if (bc.t < 1) {
+    bc.t = Math.min(1, bc.t + dt / B.blendTime)
+    const s = bc.t * bc.t * (3 - 2 * bc.t)
+    camera.position.lerpVectors(bc.startPos, camera.position, s)
+    camera.quaternion.copy(bc.startQuat).slerp(camera.quaternion, s)
+  }
+}
 
 export function update(camera, dt) {
   state.yaw -= inputState.look.dx * CAMERA.lookSensitivity * sensitivity
@@ -135,7 +179,10 @@ export function update(camera, dt) {
   zoomEased += (zoomTarget - zoomEased) * (1 - Math.exp(-CAMERA.zoomEase * dt))
 
   const distance = Math.max(1, zoomEased + CAMERA.speedDistance * rush)
-  const fov = CAMERA.fov + CAMERA.speedFov * rush + fovExtra
+  const ballCamOn = tracked && CAMERA.ballCam.enabled
+  const fovTarget = ballCamOn ? CAMERA.ballCam.fovBoost * clamp(bc.speed / CAMERA.ballCam.fovSpeed, 0, 1) : 0
+  bc.fovExtra += (fovTarget - bc.fovExtra) * (1 - Math.exp(-CAMERA.ballCam.fovEase * dt))
+  const fov = CAMERA.fov + CAMERA.speedFov * rush + fovExtra + bc.fovExtra
   if (Math.abs(camera.fov - fov) > 0.01) {
     camera.fov = fov
     camera.updateProjectionMatrix()
@@ -163,8 +210,10 @@ export function update(camera, dt) {
   )
   camera.lookAt(look.x, look.y, look.z)
 
-  if (tracked) {
-    // The chase pose is still computed above; the frozen pose replaces it.
+  if (tracked && CAMERA.ballCam.enabled) {
+    applyBallCam(camera, dt)
+  } else if (tracked) {
+    // Ball cam disabled: the chase pose is still computed above; the frozen pose replaces it.
     if (!frozen.hasPose) {
       frozen.pos.copy(camera.position)
       frozen.quat.copy(camera.quaternion)

@@ -5,6 +5,7 @@ import { CONTROLS } from './config.js'
 
 export const inputState = {
   move: { x: 0, z: 0 }, // x = strafe (+ right), z = forward (+ forward)
+  steer: 0, // -1 / 0 / +1 left/right keys, read by the kicked ball even while controls are locked
   look: { dx: 0, dy: 0 }, // raw pixels since the camera last read them
   zoom: 0, // wheel notches since the camera last read them (+ = away)
   jump: false,
@@ -54,6 +55,8 @@ export function setControlsLocked(on) {
 function recomputeMove() {
   let x = 0
   let z = 0
+  // Ball steering stays live while the controls are locked for a kick (A/D or arrows, + = right).
+  inputState.steer = (held.has('KeyD') || held.has('ArrowRight') ? 1 : 0) - (held.has('KeyA') || held.has('ArrowLeft') ? 1 : 0)
   if (controlsLocked) {
     inputState.move.x = 0
     inputState.move.z = 0
@@ -104,7 +107,7 @@ export function install(showMenu, canvasEl) {
       armed = true
       requestLock()
       // Retaking the cursor after Escape is not an action; where lock is refused, clicks act as before.
-      if (locked() || !lockEverGranted) inputState.action = true
+      if (locked() || !lockEverGranted || windowOpen) inputState.action = true
     }
   })
   window.addEventListener('pointerup', (e) => {

@@ -14,7 +14,9 @@ function worldUVs(geo) {
 export function createGround() {
   const { maxZ, lane } = ARENA
   const h = GROUND_SIZE / 2
-  const shape = new Shape([new Vector2(-h, -h), new Vector2(h, -h), new Vector2(h, h), new Vector2(-h, h)])
+  // Runs south past the lane end so the hub-level ground flanks the whole lane (the square alone stops at z = h).
+  const south = Math.max(h, lane.endZ + 60)
+  const shape = new Shape([new Vector2(-h, -south), new Vector2(h, -south), new Vector2(h, h), new Vector2(-h, h)])
   // Rotated -90deg about X, shape y becomes world -z.
   shape.holes.push(new Path([new Vector2(lane.minX, -maxZ), new Vector2(lane.minX, -lane.endZ), new Vector2(lane.maxX, -lane.endZ), new Vector2(lane.maxX, -maxZ)]))
   const mat = groundMaterial()

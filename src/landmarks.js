@@ -26,7 +26,7 @@ import {
   TorusGeometry,
 } from 'three'
 import { addCollider } from './colliders.js'
-import { BALL_ROWS, BALLS, COLORS, ECONOMY, SITES, TRAINING_FIELDS } from './config.js'
+import { BALL_ROWS, BALLS, COLORS, ECONOMY, PAD_BALL, SITES, TRAINING_FIELDS } from './config.js'
 import { faceOrigin } from './arena.js'
 import { makeLabel, paintText, whenFontsReady } from './labels.js'
 import { ballMaterial, netMaterial, solid, studMaterial } from './materials.js'
@@ -133,7 +133,7 @@ function buildTraining(root, b, mat) {
     lines.push({ text: f.rebirths ? String(f.rebirths) : 'FREE', px: 30, badge: true, icon: 'rebirth' })
     lines.push({ text: f.name, px: 40, fill: 'gold' })
     site.label(lines, fx, y0 + gh + 0.5, gz, { scale: 0.022 })
-    return { field: f, fx, ball: fieldBall, shot: 0 }
+    return { field: f, fx, ball: fieldBall, phase: 'ready', t: 0, baseScale: fieldBall.scale.x }
   })
   site.label([{ text: 'TRAIN HERE!', px: 110, fill: 'gold' }], 0, 6.2, -7, { scale: 0.03 })
 
@@ -144,8 +144,14 @@ function buildTraining(root, b, mat) {
     return { field: entry.field, x, z }
   }
   const restY = 0.3 + 0.4
-  const restZ = 1.6
+  const { restZ, goalZ, arcHeight, flightTime, respawnDelay, popTime } = PAD_BALL
+  for (const e of fields) e.ball.position.z = restZ
   return {
+    // True when the pad ball sits at the player's feet, ready to be kicked.
+    ready: (field) => {
+      const e = fields.find((f) => f.field === field)
+      return !!e && e.phase === 'ready'
+    },
     // The field under the player ({ field, x, z }), or null.
     under() {
       if (player.position.y > 1.2) return null
@@ -158,21 +164,40 @@ function buildTraining(root, b, mat) {
       const m = ballMaterial(def.color, def.patch)
       for (const e of fields) e.ball.material = m
     },
-    // The foot meets the ball on the field the player is parked on: it flies into the goal and returns.
+    // The foot meets the ball on the field the player is parked on: it flies into the goal,
+    // vanishes there, then pops back in at the player's feet.
     shoot(field) {
       const entry = fields.find((e) => e.field === field)
-      if (entry) entry.shot = 1
+      if (!entry || entry.phase !== 'ready') return
+      entry.phase = 'fly'
+      entry.t = 0
     },
     animate(dt) {
       for (const e of fields) {
-        if (e.shot <= 0) continue
-        e.shot = Math.max(0, e.shot - dt / 0.9)
-        const u = 1 - e.shot // 0..1 over the whole shot
-        const fly = Math.min(u / 0.35, 1) // flight to the goal
-        const back = Math.max((u - 0.6) / 0.4, 0) // rolls back to the spot
-        const z = restZ + (-3.9 - restZ) * fly * (1 - back)
-        e.ball.position.z = z
-        e.ball.position.y = restY + Math.sin(fly * Math.PI) * 0.9 * (1 - back)
+        if (e.phase === 'ready') continue
+        e.t += dt
+        if (e.phase === 'fly') {
+          const u = Math.min(e.t / flightTime, 1)
+          e.ball.position.z = restZ + (goalZ - restZ) * u
+          e.ball.position.y = restY + Math.sin(u * Math.PI) * arcHeight
+          if (u >= 1) {
+            e.phase = 'gone'
+            e.t = 0
+            e.ball.visible = false
+          }
+        } else if (e.phase === 'gone') {
+          if (e.t >= respawnDelay) {
+            e.phase = 'pop'
+            e.t = 0
+            e.ball.position.set(e.ball.position.x, restY, restZ)
+            e.ball.scale.setScalar(0.001)
+            e.ball.visible = true
+          }
+        } else if (e.phase === 'pop') {
+          const u = Math.min(e.t / popTime, 1)
+          e.ball.scale.setScalar(Math.max(u, 0.001) * e.baseScale)
+          if (u >= 1) e.phase = 'ready'
+        }
       }
     },
   }
@@ -638,6 +663,7 @@ export function createLandmarks(scene, b, onResult = () => {}) {
     if (what === 'balls') training.setBall(BALLS[stats.equipped] ?? BALLS[0]) // pad balls show the equipped football
   })
   training.setBall(BALLS[stats.equipped] ?? BALLS[0])
+  let padLeg = 'R' // the leg the next pad kick uses
   let parkedField = null // the unlocked field the player was last parked on (re-parks only after leaving it)
   const wheel = buildWheel(root, b, mat)
   buildSignBoard(root, b, mat)
@@ -655,7 +681,14 @@ export function createLandmarks(scene, b, onResult = () => {}) {
   let boardTimer = 0
 
   return {
-    shootTrainingBall: () => parkedField && training.shoot(parkedField),
+    // Pad kicks alternate legs (right first); the leg resets to right whenever the player steps onto a pad.
+    padLeg: () => padLeg,
+    padBallReady: () => !!parkedField && training.ready(parkedField),
+    shootTrainingBall: () => {
+      if (!parkedField) return
+      training.shoot(parkedField)
+      padLeg = padLeg === 'R' ? 'L' : 'R'
+    },
     // True while the player stands on the wheel's glowing pad (opens the Lucky Wheel window).
     atWheel: () => Math.hypot(player.position.x - SITES.wheel.x, player.position.z - SITES.wheel.z) < 4.4 && player.position.y < 2,
     // Returns the HUD prompt for where the player stands (or null).
@@ -679,6 +712,7 @@ export function createLandmarks(scene, b, onResult = () => {}) {
       const parkable = field && fieldUnlocked(field) ? field : null
       if (parkable !== parkedField) {
         parkedField = parkable
+        padLeg = 'R'
         if (parkable) parkOnPad(under.x, under.z) // walks to the spot, faces the goal; kicks animate on click
       }
       if (field) return fieldUnlocked(field) ? `Training: ${field.name} - Auto Kick` : `Needs ${field.rebirths} Rebirths`

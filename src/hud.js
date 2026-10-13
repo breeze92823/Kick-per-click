@@ -3,7 +3,7 @@
 // DOM over the canvas; it only reads and calls stats.js.
 import './hud.css'
 import { showMenu } from './bloxity.js'
-import { LEGENDS } from './config.js'
+import { KICKBALL, LEGENDS, ZONES } from './config.js'
 import { ECONOMY } from './config.js'
 import {
   buyInvSlot,
@@ -80,21 +80,13 @@ const legendRow = (l) => `
     <button class="lgcost studded" data-act="legend" data-id="${l.id}"></button>
   </div>`
 
-ICON.ball = `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" fill="#fff" stroke="#111" stroke-width="5"/><polygon points="32,19 44,28 40,42 24,42 20,28" fill="#222"/><g stroke="#222" stroke-width="4" stroke-linecap="round"><path d="M32 19V6M44 28L57 24M40 42L48 54M24 42L16 54M20 28L7 24"/></g></svg>`
+ICON.ball = `<svg viewBox="0 0 64 64"><image href="${import.meta.env.BASE_URL}ui/soccer-ball.png" width="64" height="64"/></svg>`
 
 const TEMPLATE = `
-  <div class="sysbar">
-    <button class="sys" data-act="menu" aria-label="Menu">${ICON.menu}</button>
-    <button class="sys" data-act="menu" aria-label="Settings">${ICON.gear}</button>
-  </div>
   <div class="topbar">
     <button class="tool autoclick" data-act="autoClick">${ICON.cursor}<span class="dot"></span>${t('Auto Click')}</button>
     <button class="kick studded" data-act="kick">${t('KICK!')}</button>
     <button class="tool autokick" data-act="autoKick">${ICON.shoe}<span class="dot"></span>${t('Auto Kick')}</button>
-  </div>
-  <div class="boosts">
-    <div class="boost">${ICON.shoe}${t('x1', 'kickx')}</div>
-    <div class="boost">${ICON.friend}${t('+0%', 'friends')}</div>
   </div>
   <div class="menu">
     <button class="tile studded rebirth" data-act="rebirth">${t('0%', 'pct')}${ICON.rebirth}${t('Rebirth')}</button>
@@ -108,15 +100,6 @@ const TEMPLATE = `
   <div class="power">
     <div class="row">${t('Level 1', 'level')}${t('1x Multiplier', 'mult')}</div>
     <div class="bar studded"><div class="fill"></div>${t('Kick Power: 0/0', 'bartext')}</div>
-    <div class="buys">
-      <button class="buy studded b750" data-act="buy">${ICON.shoe}${t('+750 Power')}</button>
-      <button class="buy studded b2k" data-act="buy">${ICON.shoe}${t('+2K Power')}</button>
-      <button class="buy studded b4k" data-act="buy">${ICON.shoe}${t('+4K Power')}</button>
-    </div>
-  </div>
-  <div class="offers">
-    <button class="offer studded kick2x" data-act="buy"><span class="price">${ICON.gem}${t('3')}</span>${ICON.shoe}${t('1X &gt; 2X KICK')}${t('OP', 'op')}</button>
-    <button class="offer studded wins2x" data-act="buy">${ICON.trophy}${t('2X WINS')}<span class="price">${ICON.gem}${t('89')}</span></button>
   </div>
   <div class="aim">
     <div class="meter studded"><div class="mfill"></div><i></i><i></i><i></i></div>
@@ -124,9 +107,13 @@ const TEMPLATE = `
   </div>
   <div class="prompt t"></div>
   <div class="toast t"></div>
+  <div class="levelup"><div class="levelup-t t">LEVEL UP!</div><div class="levelup-s t"></div></div>
   <div class="rating"><span class="t"></span></div>
   <div class="dist">${ICON.ball}<span class="t"></span></div>
+  <div class="winsreel"><div class="wr-win"><div class="wr-strip"></div></div></div>
   <div class="bouncepop t">BOUNCE!</div>
+  <div class="bouncepop bonuspop t"></div>
+  <div class="zonebar studded">${ZONES.map(([n, c]) => `<div class="zone" style="--zc:${c}">${t(n)}</div>`).join('')}<div class="zmark">${ICON.ball}</div></div>
   <div class="modal" data-act="closeRebirth">
     <div class="rbwin">
       <div class="rbhead studded-plate">
@@ -201,8 +188,6 @@ export function createHud() {
     rebirths: $('.counter.rebirths .n'),
     wins: $('.counter.wins .n'),
     pct: $('.pct'),
-    kickx: $('.kickx'),
-    friends: $('.friends'),
     autoClick: $('.autoclick'),
     autoKick: $('.autokick'),
     kickBtn: $('.kick'),
@@ -210,11 +195,17 @@ export function createHud() {
     mfill: $('.mfill'),
     prompt: $('.prompt'),
     toast: $('.toast'),
+    zonebar: $('.zonebar'),
+    zones: [...root.querySelectorAll('.zonebar .zone')],
+    zmark: $('.zonebar .zmark'),
     rating: $('.rating'),
     ratingText: $('.rating .t'),
     dist: $('.dist'),
     distText: $('.dist .t'),
-    bouncePop: $('.bouncepop'),
+    reel: $('.winsreel'),
+    reelStrip: $('.winsreel .wr-strip'),
+    bouncePop: $('.bouncepop:not(.bonuspop)'),
+    bonusPop: $('.bonuspop'),
     modal: $('.modal'),
     lgModal: $('.lgmodal'),
     invModal: $('.invmodal'),
@@ -437,8 +428,6 @@ export function createHud() {
     el.rebirths.textContent = formatNumber(stats.rebirths)
     el.wins.textContent = formatNumber(stats.wins)
     el.pct.textContent = `${rebirthProgress()}%`
-    el.kickx.textContent = `x${stats.kickPass * (stats.field?.mult ?? 1)}`
-    el.friends.textContent = `+${stats.friendBoost}%`
     el.autoClick.classList.toggle('on', stats.autoClick)
     el.autoKick.classList.toggle('on', stats.autoKick)
   }
@@ -453,23 +442,14 @@ export function createHud() {
     el.toast.classList.add('bad')
     el.toast.classList.toggle('show', !!sticky)
   }
-  let errCtx = null
+  // Error sound: one preloaded element, restarted per error (same pattern as the kick tick).
+  const errorSfxEl = new Audio(`${import.meta.env.BASE_URL}audio/error.mp3`)
+  errorSfxEl.preload = 'auto'
+  errorSfxEl.volume = 0.25
   function errorSfx() {
     try {
-      errCtx ||= new (window.AudioContext || window.webkitAudioContext)()
-      const t0 = errCtx.currentTime
-      for (const [i, f] of [220, 165].entries()) {
-        const o = errCtx.createOscillator()
-        const g = errCtx.createGain()
-        o.type = 'square'
-        o.frequency.value = f
-        g.gain.setValueAtTime(0.0001, t0 + i * 0.12)
-        g.gain.exponentialRampToValueAtTime(0.15, t0 + i * 0.12 + 0.02)
-        g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.12 + 0.11)
-        o.connect(g).connect(errCtx.destination)
-        o.start(t0 + i * 0.12)
-        o.stop(t0 + i * 0.12 + 0.12)
-      }
+      errorSfxEl.currentTime = 0
+      errorSfxEl.play()?.catch(() => {})
     } catch {}
   }
   function toast(text, bad = false) {
@@ -495,6 +475,11 @@ export function createHud() {
     node.classList.add(cls)
   }
   let distTimer = 0
+  let reelTimer = 0
+  // Win jingle plays for the whole reel spin (the reel's duration matches the clip length).
+  const reelSfx = new Audio(`${import.meta.env.BASE_URL}audio/slot-machine-win.mp3`)
+  reelSfx.preload = 'auto'
+  reelSfx.volume = KICKBALL.winsReel.volume
   const kickFx = {
     rating(text, tier) {
       el.ratingText.textContent = text
@@ -511,15 +496,59 @@ export function createHud() {
       }
       el.dist.classList.add('show')
       el.dist.classList.remove('final')
+      // Top zone bar: slide the ball marker and light up the zone it is in.
+      const f = Math.min(1, Math.max(0, metres / ECONOMY.laneLength))
+      const zi = Math.min(ZONES.length - 1, Math.floor(f * ZONES.length))
+      el.zonebar.classList.add('show')
+      el.zmark.style.left = `${f * 100}%`
+      el.zones.forEach((z, i) => z.classList.toggle('active', i === zi))
     },
     // The ball landed: pop the final number, then fade it out.
     distanceDone(metres) {
       el.distText.textContent = `${metres.toFixed(metres < 10 ? 1 : 0)}m`
       restart(el.dist, 'final')
-      distTimer = setTimeout(() => el.dist.classList.remove('show', 'final'), 1500)
+      el.zonebar.classList.remove('show')
+    },
+    // The landed result (distance tag + wins reel) stays until the camera has reset.
+    hideResult() {
+      clearTimeout(distTimer)
+      clearTimeout(reelTimer)
+      el.dist.classList.remove('show', 'final')
+      el.reel.classList.remove('show', 'locked', 'spin')
+    },
+    // Slot-machine reel of "+N Wins" rows above the ball: spins, decelerates, locks on `wins`.
+    winsReel(wins, pos, onLock) {
+      clearTimeout(reelTimer)
+      const { rows, spinSeconds } = KICKBALL.winsReel
+      try {
+        reelSfx.currentTime = 0
+        reelSfx.play()?.catch(() => {})
+      } catch {}
+      const list = []
+      for (let i = 0; i < rows; i++) list.push(Math.max(1, Math.round(wins * (0.15 + Math.random() * 1.7))))
+      list.push(wins, Math.max(1, Math.round(wins * (0.3 + Math.random()))))
+      el.reelStrip.innerHTML = list.map((n, i) => `<div class="wr-row${i === rows ? ' fin' : ''}">+${formatNumber(n)} Wins</div>`).join('')
+      el.reel.style.setProperty('--rows', rows - 1) // the final row ends up in the middle of the 3-row window
+      el.reel.style.setProperty('--spin', `${spinSeconds}s`)
+      el.reel.classList.remove('locked', 'spin')
+      restart(el.reel, 'show')
+      el.reelStrip.style.transition = 'none'
+      el.reelStrip.style.transform = 'translateY(0)'
+      void el.reelStrip.offsetWidth
+      el.reelStrip.style.transition = ''
+      el.reelStrip.style.transform = ''
+      el.reel.classList.add('spin')
+      reelTimer = setTimeout(() => {
+        el.reel.classList.add('locked')
+        onLock?.()
+      }, spinSeconds * 1000)
     },
     bounce() {
       restart(el.bouncePop, 'show')
+    },
+    bonus(pct) {
+      el.bonusPop.textContent = `[+${pct}%] WINS!`
+      restart(el.bonusPop, 'show')
     },
   }
 
@@ -549,17 +578,17 @@ export function createHud() {
   const gainSfx = new Audio(`${import.meta.env.BASE_URL}audio/power_gain.mp3`)
   gainSfx.preload = 'auto'
   gainSfx.volume = 0.3
-  let lastKickAt = -Infinity // ms; manual kicks inside ECONOMY.kickCooldown are ignored
-  function kickNow(power = 1, auto = false) {
+  let lastKickAt = -Infinity // ms; any kick (manual or auto) inside ECONOMY.kickCooldown is ignored
+  function kickNow(power = 1) {
     const now = performance.now()
-    if (!auto && now - lastKickAt < ECONOMY.kickCooldown * 1000) return
+    if (now - lastKickAt < ECONOMY.kickCooldown * 1000) return
     lastKickAt = now
     try {
       gainSfx.currentTime = 0
       gainSfx.play()?.catch(() => {})
     } catch {}
     onKick(power)
-    const { gain, leveled } = kick(0.5 + 0.5 * power)
+    const { gain } = kick(0.5 + 0.5 * power)
     const pop = document.createElement('span')
     pop.className = 't pop'
     pop.innerHTML = `${ICON.shoe}<span>+${formatNumber(gain)}</span>` // same shoe icon as Auto Kick
@@ -576,7 +605,39 @@ export function createHud() {
     }
     root.appendChild(pop)
     pop.addEventListener('animationend', () => pop.remove())
-    if (leveled) toast(`Level ${stats.level}!`)
+  }
+
+  // "LEVEL UP!" banner: replays whenever the level rises (a rebirth reset or save load does not trigger it).
+  const levelUp = $('.levelup')
+  const levelUpSub = $('.levelup-s')
+  const levelUpSfx = new Audio(`${import.meta.env.BASE_URL}audio/level_up.mp3`)
+  levelUpSfx.preload = 'auto'
+  levelUpSfx.volume = 0.4
+  const LEVEL_UP_MS = { inMs: 420, holdMs: 900, outMs: 560 }
+  let lastLevel = stats.level
+  let levelUpAnim = null
+  function renderLevelUp() {
+    if (stats.level > lastLevel) {
+      try {
+        levelUpSfx.currentTime = 0
+        levelUpSfx.play()?.catch(() => {})
+      } catch {}
+      levelUpSub.textContent = `Level ${formatNumber(stats.level)}`
+      const { inMs, holdMs, outMs } = LEVEL_UP_MS
+      const total = inMs + holdMs + outMs
+      levelUpAnim?.cancel()
+      levelUpAnim = levelUp.animate(
+        [
+          { opacity: 0, transform: 'translateX(-50%) translateY(14px) scale(0.4)', offset: 0 },
+          { opacity: 1, transform: 'translateX(-50%) scale(1.14)', offset: (inMs * 0.62) / total },
+          { opacity: 1, transform: 'translateX(-50%) scale(1)', offset: inMs / total },
+          { opacity: 1, transform: 'translateX(-50%) scale(1)', offset: (inMs + holdMs) / total },
+          { opacity: 0, transform: 'translateX(-50%) translateY(calc(var(--k) * -46)) scale(1)', offset: 1 },
+        ],
+        { duration: total, easing: 'ease-out' },
+      )
+    }
+    lastLevel = stats.level
   }
 
   // In the kick lane KICK! opens a power meter (KICK! becomes CANCEL); the next tap
@@ -627,7 +688,7 @@ export function createHud() {
   // Auto Click / Auto Kick skip the meter and kick at full power when the ball is free.
   function autoKick() {
     if (inLane && (aiming || isBusy())) return
-    kickNow(1, true)
+    kickNow(1)
   }
 
   const actions = {
@@ -683,7 +744,6 @@ export function createHud() {
     closeLegends: () => el.lgModal.classList.remove('show'),
     closeWheel,
     spin: spinWheel,
-    buy: () => toast('Store coming soon'),
   }
   // No focus on mousedown: Space (jump) must never re-click a HUD button.
   root.addEventListener('mousedown', (e) => e.preventDefault())
@@ -698,6 +758,7 @@ export function createHud() {
 
   onStats(() => {
     render()
+    renderLevelUp()
     if (el.modal.classList.contains('show')) renderRebirth()
     if (el.lgModal.classList.contains('show')) renderLegends()
     if (el.invModal.classList.contains('show')) renderInventory()

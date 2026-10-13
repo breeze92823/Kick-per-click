@@ -45,18 +45,6 @@
   background-size: var(--stud-size), 100% 100%;
 }
 
-/* --- Top-left menu buttons ------------------------------------------------- */
-#hud .sysbar { z-index: 6; position: absolute; left: calc(var(--k) * 20); top: calc(var(--k) * 16); display: flex; gap: calc(var(--k) * 14); }
-#hud .sys {
-  width: calc(var(--k) * 56);
-  height: calc(var(--k) * 56);
-  border-radius: 50%;
-  background: rgba(18, 18, 22, 0.78);
-  display: grid;
-  place-items: center;
-}
-#hud .sys svg { width: 50%; height: 50%; }
-
 /* --- Top centre: Auto Click / KICK! / Auto Kick ------------------------------ */
 #hud .topbar {
   position: absolute;
@@ -89,12 +77,6 @@
   box-shadow: 0 0 0 calc(var(--k) * 4) #173a82, inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.6);
 }
 #hud .kick .t { font-size: calc(var(--k) * 44); --sc: #163a80; }
-
-/* --- Top right boosts -------------------------------------------------------- */
-#hud .boosts { position: absolute; right: calc(var(--k) * 22); top: calc(var(--k) * 18); display: flex; gap: calc(var(--k) * 16); }
-#hud .boost { width: calc(var(--k) * 78); text-align: center; }
-#hud .boost svg { width: calc(var(--k) * 74); height: calc(var(--k) * 70); margin: 0 auto; }
-#hud .boost .t { position: relative; margin-top: calc(var(--k) * -18); font-size: calc(var(--k) * 32); }
 
 /* --- Left menu tiles --------------------------------------------------------- */
 #hud .menu {
@@ -154,36 +136,6 @@
   transition: width 0.12s ease-out;
 }
 #hud .bar .t { position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--k) * 46); }
-#hud .buys { display: flex; gap: calc(var(--k) * 14); margin-top: calc(var(--k) * 14); }
-#hud .buy { height: calc(var(--k) * 78); display: grid; place-items: center; }
-#hud .buy svg { position: absolute; left: 50%; top: 50%; width: calc(var(--k) * 96); height: calc(var(--k) * 64); transform: translate(-50%, -50%); }
-#hud .buy .t { position: relative; font-size: calc(var(--k) * 28); --sw: calc(var(--k) * 6); }
-#hud .b750 { width: calc(var(--k) * 166); background-image: var(--studs), linear-gradient(#ff62f2, #bd2ad8); }
-#hud .b2k { width: calc(var(--k) * 166); background-image: var(--studs), linear-gradient(#ff5f5f, #d81f2a); }
-#hud .b4k { flex: 1; background-image: var(--studs), var(--rainbow); }
-#hud .b4k .t { font-size: calc(var(--k) * 46); --sw: calc(var(--k) * 8); }
-
-/* --- Right offers ------------------------------------------------------------ */
-#hud .offers {
-  position: absolute;
-  right: calc(var(--k) * 16);
-  top: calc(50% - var(--k) * 126);
-  width: calc(var(--k) * 308);
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--k) * 58);
-}
-#hud .offer { height: calc(var(--k) * 92); display: grid; place-items: center; }
-#hud .offer > svg { position: absolute; left: 50%; top: 50%; width: calc(var(--k) * 96); height: calc(var(--k) * 70); transform: translate(-50%, -50%); }
-#hud .offer > .t { position: relative; font-size: calc(var(--k) * 46); --sw: calc(var(--k) * 8); }
-#hud .kick2x { background-image: var(--studs), var(--rainbow); }
-#hud .wins2x { background-image: var(--studs), linear-gradient(#ffe33a, #ff9a1a); }
-#hud .price { position: absolute; display: flex; align-items: center; gap: calc(var(--k) * 8); }
-#hud .price svg { width: calc(var(--k) * 46); height: calc(var(--k) * 46); }
-#hud .price .t { font-size: calc(var(--k) * 46); color: #74ff4a; --sc: #0e3a10; }
-#hud .kick2x .price { left: calc(var(--k) * -30); top: calc(var(--k) * -48); }
-#hud .wins2x .price { left: 50%; bottom: calc(var(--k) * -46); transform: translateX(-50%); }
-#hud .offer > .op { position: absolute; right: calc(var(--k) * -14); top: calc(var(--k) * -36); font-size: calc(var(--k) * 50); color: #ff2a2a; --sc: #fff; transform: rotate(-8deg); }
 
 /* --- Prompt, toast, kick pops ------------------------------------------------ */
 #hud .prompt {
@@ -212,6 +164,19 @@
 #hud .toast.show { opacity: 1; }
 #hud .toast.bad { color: #ff3b3b; --sc: #3a0505; }
 #hud .toast.good { color: #3bff5a; --sc: #053a12; }
+#hud .levelup {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--k) * 116);
+  transform: translateX(-50%);
+  text-align: center;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+#hud .levelup-t { font-size: calc(var(--k) * 68); color: #ffd21e; --sc: #4a3300; }
+#hud .levelup-s { margin-top: calc(var(--k) * 6); font-size: calc(var(--k) * 32); color: #fff; }
 #hud .pop {
   position: absolute;
   font-size: calc(var(--k) * 40);
@@ -273,6 +238,87 @@
 #hud .dist svg { flex: none; width: calc(var(--k) * 88); height: calc(var(--k) * 88); filter: drop-shadow(0 calc(var(--k) * 4) 0 rgba(0, 0, 0, 0.35)); animation: hud-spin 1.2s linear infinite; }
 #hud .dist .t { font-size: calc(var(--k) * 112); font-style: italic; --sw: calc(var(--k) * 14); text-shadow: 0 calc(var(--k) * 6) 0 rgba(0, 0, 0, 0.35); }
 #hud .dist.final .t { color: #ffe23a; animation: hud-dist-pop 0.5s ease-out; }
+/* Wins reel: a 3-row window over a tall strip; the strip spins up, decelerates and locks on the final row. */
+#hud .winsreel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: none;
+  translate: -50% -50%; /* screen centre; separate property so the pop animation's transform doesn't override it */
+  pointer-events: none;
+  z-index: 9;
+}
+#hud .winsreel.show { display: block; animation: hud-dist-pop 0.35s ease-out; }
+#hud .wr-win {
+  height: calc(var(--k) * 300);
+  min-width: calc(var(--k) * 560);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(transparent, #000 28%, #000 72%, transparent);
+  mask-image: linear-gradient(transparent, #000 28%, #000 72%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.4) 20%, rgba(0, 0, 0, 0.4) 80%, transparent);
+}
+#hud .wr-strip { will-change: transform; }
+#hud .winsreel.spin .wr-strip {
+  transform: translateY(calc(var(--k) * -100 * var(--rows)));
+  transition: transform var(--spin) cubic-bezier(0.12, 0.7, 0.18, 1);
+}
+#hud .wr-row {
+  height: calc(var(--k) * 100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: calc(var(--k) * 64);
+  color: #fff;
+  opacity: 0.6;
+  -webkit-text-stroke: calc(var(--k) * 8) #1b1b1b;
+  paint-order: stroke fill;
+  white-space: nowrap;
+}
+#hud .winsreel.spin:not(.locked) .wr-row { filter: blur(calc(var(--k) * 1.5)); }
+#hud .winsreel.locked .wr-row.fin { opacity: 1; font-size: calc(var(--k) * 90); color: #ffe23a; animation: hud-dist-pop 0.4s ease-out; }
+#hud .zonebar {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--k) * 16);
+  transform: translateX(-50%);
+  width: calc(var(--k) * 1090);
+  height: calc(var(--k) * 78);
+  display: none;
+  gap: calc(var(--k) * 4);
+  padding: calc(var(--k) * 6);
+  background: #111;
+  border-radius: calc(var(--k) * 6);
+  pointer-events: none;
+  z-index: 7;
+}
+#hud .zonebar.show { display: flex; }
+#hud .zone {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--zc);
+  font-size: calc(var(--k) * 22);
+  --sw: calc(var(--k) * 5);
+  opacity: 0.55;
+}
+#hud .zone.active { opacity: 1; filter: brightness(1.25); }
+#hud .zmark {
+  position: absolute;
+  top: calc(var(--k) * 70);
+  width: 0;
+  transition: left 0.08s linear;
+}
+#hud .zmark svg {
+  position: absolute;
+  left: calc(var(--k) * -26);
+  width: calc(var(--k) * 52);
+  height: calc(var(--k) * 52);
+  filter: drop-shadow(0 calc(var(--k) * 3) 0 rgba(0, 0, 0, 0.4));
+  animation: hud-spin 1.2s linear infinite;
+}
 @keyframes hud-spin { to { transform: rotate(360deg); } }
 @keyframes hud-dist-pop { 0% { transform: scale(1.6); } 60% { transform: scale(0.92); } 100% { transform: scale(1); } }
 #hud .bouncepop {
@@ -287,6 +333,7 @@
   pointer-events: none;
   z-index: 8;
 }
+#hud .bonuspop { top: 24%; color: #ffe45a; --sc: #7a4a00; }
 #hud .bouncepop.show { animation: hud-bounce-pop 0.9s ease-out forwards; }
 @keyframes hud-bounce-pop {
   0% { opacity: 0; transform: translate(-50%, 0) scale(0.4) rotate(-10deg); }
@@ -296,21 +343,18 @@
 }
 
 /* --- Kick lane: kick buttons at the bottom centre, clutter hidden ------------- */
-#hud .topbar, #hud .offers { transition: top 0.25s, opacity 0.25s; }
+#hud .topbar { transition: top 0.25s, opacity 0.25s; }
 #hud.lane .topbar { top: calc(100% - var(--k) * 124); }
 #hud.lane .power,
 #hud.lane .menu,
-#hud.lane .boosts,
-#hud.lane .wins2x,
 #hud.lane .prompt { display: none !important; }
-#hud.lane .offers { top: calc(50% - var(--k) * 46); }
 
 /* --- Kick lane aiming: CANCEL button, power meter, "Tap to Kick!" ------------- */
 #hud .aim { display: none; position: absolute; left: calc(var(--k) * 1458); top: calc(var(--k) * 212); width: calc(var(--k) * 84); pointer-events: auto; cursor: pointer; }
 #hud.lane.aiming .aim { display: block; }
 #hud .meter {
   position: relative;
-  height: calc(var(--k) * 488);
+  height: calc(var(--k) * 610);
   border-radius: calc(var(--k) * 14);
   overflow: hidden;
   background: linear-gradient(#e8e8ee, #b9b9c6);
@@ -324,7 +368,7 @@
 #hud .aim .tap {
   position: absolute;
   left: 50%;
-  top: calc(var(--k) * 512);
+  top: calc(var(--k) * 634);
   transform: translateX(-50%);
   font-size: calc(var(--k) * 56);
   color: #ff5be8;

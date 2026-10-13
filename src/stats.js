@@ -1,7 +1,7 @@
 // Player progression: kick power fills the level bar, the equipped football and
 // the training field set kick power per click, wins unlock footballs and rebirths.
 // Saved to localStorage (best effort: storage may be blocked).
-import { BALLS, ECONOMY, KICKBALL, LEGENDS } from './config.js'
+import { BALLS, ECONOMY, KICKBALL, LANE, LEGENDS } from './config.js'
 
 const SAVE_KEY = 'kick-per-click:v3'
 const OLD_KEY = 'kick-per-click:v2' // rebirths started at 1 there
@@ -114,18 +114,21 @@ export function rebirthLevel(r = stats.rebirths) {
 export const canRebirth = () => stats.level >= rebirthLevel()
 export const rebirthProgress = () => Math.min(100, Math.floor((stats.level / rebirthLevel()) * 100))
 
-// Launch speed of the equipped ball: grows with ball kick x level and with rebirths.
-export function kickSpeed() {
-  const k = KICKBALL
-  const v = k.baseSpeed + k.speedPerDecade * Math.log10(1 + ballKick(stats.equipped) * stats.level) + k.speedPerRebirth * stats.rebirths
-  return Math.min(k.maxSpeed, v)
+// Full-power range (metres from the lane origin) of a ball with `kick` at Kick Power `level`.
+// The reference state (ball +56, level 100) lands exactly on the lane end; any stronger product is capped.
+export function rangeFor(kick, level) {
+  const r = KICKBALL.range
+  const f = Math.log10(1 + kick * level) / Math.log10(1 + r.refKick * r.refLevel)
+  return Math.min(LANE.length, Math.max(r.minRange, LANE.length * Math.pow(f, r.curve)))
 }
+export const kickRange = () => rangeFor(ballKick(stats.equipped), stats.level)
 
 // Wins for a kick that travelled `metres`: exponential in distance, scaled by the multiplier.
-export function winsForDistance(metres) {
+// `bonusPct` (Bonus Win ring) raises the base wins before the multipliers apply.
+export function winsForDistance(metres, bonusPct = 0) {
   const { laneLength, winsMax, winsCurve: c } = ECONOMY
   const f = Math.min(1, Math.max(0, metres / laneLength))
-  return Math.max(1, Math.round(((winsMax * (Math.exp(c * f) - 1)) / (Math.exp(c) - 1)) * multiplier() * legendMult()))
+  return Math.max(1, Math.round(((winsMax * (Math.exp(c * f) - 1)) / (Math.exp(c) - 1)) * (1 + bonusPct / 100) * multiplier() * legendMult()))
 }
 
 export const legendMult = () => LEGENDS.find((l) => l.id === stats.legend)?.mult ?? 1

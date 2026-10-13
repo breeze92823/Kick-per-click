@@ -6,6 +6,7 @@ import { Client } from '@colyseus/sdk'
 import { DEV_MODE, GAME_SLUG, NET, SERVER_URL } from './config.js'
 import { authState, sdk, getEquippedAvatar, getProportions, getSkinTextureUrl, subscribeAuth } from './bloxity.js'
 import { hydrateStats, onStats, savedSnapshot, stats } from './stats.js'
+import { markLoaded } from './loading.js'
 
 const AVATAR_MAX = 3000 // backend AVATAR_MAX_LEN
 
@@ -144,18 +145,21 @@ function attach(room) {
   net.connected = true
   room.onMessage('progress', (doc) => {
     net.hydrated = true
+    markLoaded('net')
     hydrateStats(doc ?? {})
     lastSaved = snapshot() // what the server holds: don't echo it straight back
   })
   room.onMessage('noProgress', () => {
     // New account, guest or no database: keep the local save and push it as the first save.
     net.hydrated = true
+    markLoaded('net')
     lastSaved = ''
     saveNow()
   })
   room.onMessage('serverError', () => {
     // The save exists but could not be read: never overwrite it.
     net.hydrated = false
+    markLoaded('net')
     console.warn('[net] server could not read the saved progress; saving is off for this session')
   })
   room.onMessage('leaderboard', (rows) => {
@@ -195,6 +199,7 @@ async function connect() {
     attach(await client.joinOrCreate('world', { ...id, avatar: avatarJson() }))
   } catch (err) {
     if (!DEV_MODE) console.warn('[net] could not reach the server; playing offline', err?.message ?? err)
+    markLoaded('net') // gave up for now: play offline rather than hold the loading screen
     setTimeout(connect, 10000)
   } finally {
     connecting = false
@@ -202,7 +207,10 @@ async function connect() {
 }
 
 export function initNet() {
-  if (!SERVER_URL && !canResolve()) return console.info('[net] no server configured; playing offline')
+  if (!SERVER_URL && !canResolve()) {
+    markLoaded('net')
+    return console.info('[net] no server configured; playing offline')
+  }
   onStats(() => {
     scheduleSave()
     syncEquipment()

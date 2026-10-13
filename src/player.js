@@ -1,7 +1,7 @@
 import { inputState } from './input.js'
 import { getYaw, syncYawToPlayer } from './camera.js'
 import { baseFloor, floorUnder, pushOut } from './colliders.js'
-import { GROUND_Y, PHYSICS, PLAYER_DIMS, SPAWN, SPAWN_FACING, WORLD_BOUNDS } from './config.js'
+import { ARENA, GROUND_Y, PHYSICS, PLAYER_DIMS, SPAWN, SPAWN_FACING, WORLD_BOUNDS } from './config.js'
 
 // The local player singleton, mutated in place. Kinematic capsule stepped once
 // per frame: input -> gravity -> integrate -> walls/props -> floor. Solid
@@ -155,7 +155,8 @@ export function step(dt) {
 
   const r = player.dims.radius
   p.x = Math.max(WORLD_BOUNDS.minX + r, Math.min(WORLD_BOUNDS.maxX - r, p.x))
-  p.z = Math.max(WORLD_BOUNDS.minZ + r, Math.min(WORLD_BOUNDS.maxZ - r, p.z))
+  // The lane is for the ball only: the player stops at the kick strip's south edge (the ramp's top).
+  p.z = Math.max(WORLD_BOUNDS.minZ + r, Math.min(Math.min(WORLD_BOUNDS.maxZ, ARENA.maxZ) - r, p.z))
 
   pushOut(p, r, player.dims.height)
 

@@ -1,6 +1,6 @@
 import { Group, Mesh, SphereGeometry } from 'three'
 import { ballMaterial } from './materials.js'
-import { BALLS, JUGGLE } from './config.js'
+import { BALLS, JUGGLE, KICKBALL } from './config.js'
 import { stats } from './stats.js'
 import * as bloxity from './bloxity.js'
 import { player } from './player.js'
@@ -99,9 +99,12 @@ export function createPlayerAvatar(scene) {
   // Lane kick: one leg swing; `onContact` fires when the foot meets the ball.
   let strike = null
   let ballHidden = false
-  function kickSwing(onContact) {
+  let kickReady = false
+  let groundW = 0 // 0 ball in the hands .. 1 ball on the ground at the foot
+  const lerp = (a, b, t) => a + (b - a) * t
+  function kickSwing(onContact, leg = 'R') {
     if (strike) return false
-    strike = { leg: 'R', t: 0, hit: false, onContact }
+    strike = { leg, t: 0, hit: false, onContact, ready: (animator?.readyW ?? 0) > 0.5 }
     return true
   }
 
@@ -142,6 +145,7 @@ export function createPlayerAvatar(scene) {
     whenLoaded: (fn) => (loaded ? fn() : (onLoaded = fn)),
     juggle: startJuggle,
     kickSwing,
+    setKickReady: (on) => (kickReady = on),
     setBallHeld: (held) => (ballHidden = !held),
     update(dt) {
       group.position.set(player.position.x, player.position.y, player.position.z)
@@ -163,6 +167,7 @@ export function createPlayerAvatar(scene) {
       if (animator) {
         // Hands stay open from the release until the ball drops back to catching height.
         animator.armsOpen = !!seq && (seq.stage < 3 || ball.y > 1.45 || ball.vy > 0)
+        animator.kickReady = kickReady
         animator.legSwing = strike ?? seq?.swing ?? null
       }
       animator?.update(dt, {
@@ -172,7 +177,16 @@ export function createPlayerAvatar(scene) {
         turn: inputState.move.x,
       })
       const free = seq && seq.stage > 0 && seq.stage < 4
-      heldBall.position.set(0, free ? ball.y : J.holdY + (avatar?.position.y ?? 0), J.holdZ)
+      // Kick-ready (Tap to Kick bar up): the ball drops from the hands to the ground in
+      // front of the kicking foot, where the lane kick launches it from.
+      groundW += ((kickReady || strike ? 1 : 0) - groundW) * (1 - Math.exp(-12 * dt))
+      if (strike?.hit) groundW = 0
+      const g = groundW
+      heldBall.position.set(
+        -0.1 * g,
+        free ? ball.y : lerp(J.holdY + (avatar?.position.y ?? 0), KICKBALL.radius, g),
+        lerp(J.holdZ, KICKBALL.startForward, g),
+      )
       heldBall.visible = !ballHidden
       if (free) heldBall.rotation.x -= dt * 6 // tumbles in the air
       else heldBall.rotation.x = 0

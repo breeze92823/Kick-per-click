@@ -229,30 +229,60 @@ class PlayerAnimator {
     mix('ArmL2', 0.7, 0, 0.3, 0)
     mix('ArmR2', 0.7, 0, 0.3, 0)
 
-    // Kicking leg (set by the juggle sequence): wind-up back, strike forward, recover.
+    // Kick pose. `kickReady` (Tap to Kick meter open) holds the wind-up: torso over the
+    // ball, arms out, kicking foot cocked back. A swing then strikes from that wind-up.
     const sw = this.legSwing
-    if (sw) {
-      const [hip, knee] = legSwingPose(sw.t)
-      const side = sw.leg === 'R' ? 'R' : 'L'
+    this.readyW = (this.readyW ?? 0) + ((this.kickReady ? 1 : 0) - (this.readyW ?? 0)) * (1 - Math.exp(-10 * dt))
+    const ready = this.readyW
+    if (sw || ready > 0.01) {
+      const side = !sw || sw.leg === 'R' ? 'R' : 'L'
+      const other = side === 'R' ? 'L' : 'R'
+      const [hip, knee] = sw ? legSwingPose(sw.ready ? 0.1 + sw.t * 0.76 : sw.t) : [0.55, 1.1]
+      const legW = sw ? 1 : ready
       const set = (bone, v) => {
-        o[BONE_INDEX[bone] * 3] = v
-        o[BONE_INDEX[bone] * 3 + 1] = 0
-        o[BONE_INDEX[bone] * 3 + 2] = 0
+        const i = BONE_INDEX[bone] * 3
+        o[i] = lerp(o[i], v, legW)
+        o[i + 1] = lerp(o[i + 1], 0, legW)
+        o[i + 2] = lerp(o[i + 2], 0, legW)
       }
       set(`Leg${side}1`, hip)
       set(`Leg${side}2`, knee)
-      // Plant the other leg with a soft knee.
-      const other = side === 'R' ? 'L' : 'R'
+      // Full-body pose: torso leans over the ball and twists into the swing, the arms
+      // throw out for balance (opposite arm forward, kicking-side arm back).
+      const env = sw ? (sw.ready ? 1 : Math.min(1, sw.t / 0.1)) * (1 - smoothstep(0.28, 0.42, sw.t)) : ready
+      const sgn = side === 'R' ? 1 : -1
+      const add = (bone, x, y, z) => {
+        const i = BONE_INDEX[bone] * 3
+        o[i] += x * env
+        o[i + 1] += y * env
+        o[i + 2] += z * env
+      }
+      const arm = (bone, x, z) => {
+        const i = BONE_INDEX[bone] * 3
+        o[i] = lerp(o[i], x, env)
+        o[i + 1] = lerp(o[i + 1], 0, env)
+        o[i + 2] = lerp(o[i + 2], z, env)
+      }
+      add('Spine1', 0.35, -0.25 * sgn, 0.1 * sgn)
+      add('Spine2', 0.12, -0.15 * sgn, 0)
+      add('Neck1', -0.2, 0.2 * sgn, 0)
+      arm(`Arm${side}1`, 0.6, -0.8 * sgn) // kicking-side arm swung back and out
+      arm(`Arm${other}1`, -0.5, 1.2 * sgn) // opposite arm thrown forward across
+      arm(`Arm${side}2`, 0.3, 0)
+      arm(`Arm${other}2`, 0.5, 0)
+      // Planted leg: deep knee bend (the crouched kick stance).
       const at = BONE_INDEX[`Leg${other}1`] * 3
-      o[at] = lerp(o[at], 0.1, 0.85)
-      o[BONE_INDEX[`Leg${other}2`] * 3] = 0.25
-    }
+      o[at] = lerp(o[at], -0.35, env)
+      const ok = BONE_INDEX[`Leg${other}2`] * 3
+      o[ok] = lerp(o[ok], 0.8, env)
+      this.kickDip = 0.1 * env // sinks onto the planted leg (read by applyVisual)
+    } else this.kickDip = 0
   }
 
   applyVisual(dt, input) {
     const wantBank = this.state === 'run' ? -input.turn * L.bankAngle * 0.6 : 0
     this.bank += (wantBank - this.bank) * (1 - Math.exp(-L.bankRate * dt))
     this.root.rotation.set(0, 0, this.bank)
-    this.root.position.y = this.output.bobY
+    this.root.position.y = this.output.bobY - (this.kickDip ?? 0)
   }
 }
