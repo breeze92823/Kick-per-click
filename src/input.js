@@ -22,6 +22,7 @@ let orbiting = false // right-drag fallback where pointer lock is refused
 let canvas = null
 let lockEverGranted = false
 let armed = false
+let lastUnlockAt = -Infinity // when pointer lock was last released (the Esc that freed it must not also open the menu)
 
 const locked = () => !!canvas && document.pointerLockElement === canvas
 // Pointer lock can reject (sandboxed frame, post-Escape cooldown); that is not a fault.
@@ -80,12 +81,16 @@ export function install(showMenu, canvasEl) {
       orbiting = false
     } else {
       inputState.action = false // cursor is back: the HUD is clickable, nothing is held
+      lastUnlockAt = performance.now()
     }
   })
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return
-    if (e.code === 'Escape') showMenu()
-    else if (!armed) {
+    if (e.code === 'Escape') {
+      // First Esc frees the cursor (the browser does it, or we do); only the next one opens the portal menu.
+      if (locked()) document.exitPointerLock?.()
+      else if (performance.now() - lastUnlockAt > 250) showMenu()
+    } else if (!armed) {
       armed = true // the first keypress is a user gesture: take the mouse without a click
       requestLock()
     }
