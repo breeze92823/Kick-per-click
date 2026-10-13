@@ -6,7 +6,8 @@ import { player, resetPlayer, step as stepPlayer, walkTo } from './player.js'
 import { enterAimView, exitAimView, isCameraBusy, syncYawToPlayer, update as updateCamera } from './camera.js'
 import { createFog, createGround, createLights, createSky } from './world.js'
 import { createPlayerAvatar } from './playerAvatar.js'
-import { isTouch } from './device.js'
+import { installViewport, isTouch } from './device.js'
+import { createTouchControls } from './touch.js'
 import { createVoxelBuilder } from './voxels.js'
 import { buildArena } from './arena.js'
 import { createLaneSections } from './laneSections.js'
@@ -19,10 +20,13 @@ import { createLegendPet } from './legendPet.js'
 import { addWins, kickRange, rangeFor, recordDistance, stats, tickPlaytime, winsForDistance } from './stats.js'
 import { createLoading, markLoaded } from './loading.js'
 import { createTutorial } from './tutorial.js'
+import { createLoginButton } from './login.js'
 
 // --- Bloxity + player state -----------------------------------------------
+installViewport() // --k0 / html.compact before any HUD is built
 createLoading() // before init(): the portal overlay gets its first step text
 bloxity.init()
+createLoginButton()
 resetPlayer(SPAWN, SPAWN_FACING)
 syncYawToPlayer()
 
@@ -65,6 +69,7 @@ let hud = null
 const landmarks = createLandmarks(scene, voxels, (text, ok = true) => hud?.toast(text, !ok)) // ball buy / equip results, same banner as every other message
 voxels.build(scene)
 hud = createHud()
+createTouchControls({ showMenu: bloxity.showMenu })
 const tutorial = createTutorial(scene, hud)
 
 const avatar = createPlayerAvatar(scene)
