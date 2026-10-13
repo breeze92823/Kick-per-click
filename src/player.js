@@ -14,6 +14,7 @@ export const player = {
   moveSpeed: PHYSICS.moveSpeed,
   dims: { ...PLAYER_DIMS },
   padTarget: null, // { x, z } training-pad spot being walked to / parked on
+  walkTarget: null, // { x, z } auto-walk goal (Auto Kick heading for the kick strip); any move/jump input cancels it
   atPad: false, // reached padTarget: planted, facing the goal, kick animation on click
 }
 
@@ -25,6 +26,10 @@ let padNeedsNeutral = false
 export function parkOnPad(x, z) {
   player.padTarget = { x, z }
   player.atPad = false
+}
+
+export function walkTo(x, z) {
+  if (!player.padTarget) player.walkTarget = { x, z }
 }
 
 export function releasePad() {
@@ -43,6 +48,7 @@ export function resetPlayer(spawn = SPAWN, facing = SPAWN_FACING) {
   player.grounded = true
   player.facing = facing
   player.padTarget = null
+  player.walkTarget = null
   player.atPad = false
   sinceGrounded = 0
   jumpBuffered = 0
@@ -126,6 +132,21 @@ export function step(dt) {
         moving = false
         inputState.jump = false
       }
+    }
+  }
+
+  // Auto-walk to the kick strip (Auto Kick): input steers away from it, otherwise head straight there.
+  const goal = player.walkTarget
+  if (goal) {
+    const dx = goal.x - player.position.x
+    const dz = goal.z - player.position.z
+    const d = Math.hypot(dx, dz)
+    if (len > 0.01 || inputState.jump || d < 0.5 || player.padTarget) player.walkTarget = null
+    else {
+      wishX = dx / d
+      wishZ = dz / d
+      speed = Math.min(player.moveSpeed, Math.max(2, d * 4))
+      moving = true
     }
   }
 

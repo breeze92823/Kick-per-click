@@ -2,7 +2,7 @@ import { Clock, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vect
 import { ARENA, BALLS, CAMERA, ECONOMY, GRAPHICS_PRESETS, KICKBALL, SPAWN, SPAWN_FACING } from './config.js'
 import * as bloxity from './bloxity.js'
 import { inputState, install as installInput, setControlsLocked, setWindowOpen } from './input.js'
-import { player, resetPlayer, step as stepPlayer } from './player.js'
+import { player, resetPlayer, step as stepPlayer, walkTo } from './player.js'
 import { enterAimView, exitAimView, isCameraBusy, syncYawToPlayer, update as updateCamera } from './camera.js'
 import { createFog, createGround, createLights, createSky } from './world.js'
 import { createPlayerAvatar } from './playerAvatar.js'
@@ -15,6 +15,7 @@ import { createHud } from './hud.js'
 import { createBallKick } from './ballKick.js'
 import { initNet, net, sendPose, syncAvatar } from './net.js'
 import { createRemotePlayers } from './remotePlayers.js'
+import { createLegendPet } from './legendPet.js'
 import { addWins, kickRange, rangeFor, stats, tickPlaytime, winsForDistance } from './stats.js'
 import { createLoading, markLoaded } from './loading.js'
 
@@ -66,6 +67,7 @@ hud = createHud()
 
 const avatar = createPlayerAvatar(scene)
 const remotePlayers = createRemotePlayers(scene)
+const legendPet = createLegendPet(scene)
 const _ball = new Vector3()
 // Screen position (px) of a world point, or null behind the camera.
 function toScreen(p) {
@@ -112,6 +114,8 @@ let aimOn = false
 let controlsLocked = false
 let cursorFree = false
 hud.setBusyCheck(() => ballKick.busy)
+const hudRoot = document.getElementById('hud')
+let ballAir = false
 // Tap to Kick: swing to the ball-follow view while aiming; cancelling restores the old orbit.
 hud.setOnAim((on) => {
   aimOn = on
@@ -133,6 +137,7 @@ avatar.whenLoaded(() => markLoaded('avatar'))
 let elapsed = 0
 let actionWasHeld = false
 let autoClickTimer = 0
+let autoLaneTimer = 0
 let onPad = false
 let wasNearWheel = false
 
@@ -153,6 +158,7 @@ renderer.setAnimationLoop(() => {
   if (winOpen !== document.body.classList.contains('win-open')) document.body.classList.toggle('win-open', winOpen)
   // The cursor is free while a window or the Tap to Kick meter is up (so they are clickable), mouse-look otherwise.
   if ((winOpen || aimOn) !== cursorFree) setWindowOpen((cursorFree = winOpen || aimOn))
+  if (ballKick.busy !== ballAir) hudRoot?.classList.toggle('ball-air', (ballAir = ballKick.busy)) // hide kick buttons while the ball is in the air
   const lock = aimOn || ballKick.busy || isCameraBusy() || winOpen
   if (lock !== controlsLocked) setControlsLocked((controlsLocked = lock))
 
@@ -166,14 +172,29 @@ renderer.setAnimationLoop(() => {
     autoClickTimer -= dt
     if (autoClickTimer <= 0) {
       autoClickTimer += onPadKick ? ECONOMY.padKickInterval : Math.max(ECONOMY.autoClickInterval, ECONOMY.kickCooldown)
-      hud.autoKick()
+      hud.autoKick(!onPadKick) // Auto Click only gains power; pad kicks still launch the ball
     }
   } else autoClickTimer = 0
+  // Auto Kick: keeps taking the Tap to Kick shot in the lane (random 0%-50% power) whenever the ball is free.
+  // Not in the lane yet: walk to the kick strip (idle players only; any move input cancels the walk).
+  if (stats.autoKick && !inLane && !winOpen && !player.padTarget && !player.walkTarget && !ballKick.busy && !inputState.move.x && !inputState.move.z && player.grounded) {
+    walkTo(0, ARENA.maxZ - 4)
+  }
+  if (stats.autoKick && inLane && !winOpen) {
+    autoLaneTimer -= dt
+    if (autoLaneTimer <= 0) {
+      autoLaneTimer = Math.max(ECONOMY.autoClickInterval, ECONOMY.kickCooldown)
+      hud.autoLaneKick()
+    }
+  } else autoLaneTimer = 0
   tickPlaytime(dt)
 
   ballKick.update(dt)
   avatar.update(dt)
-  sendPose(player, Math.hypot(player.velocity.x, player.velocity.z))
+  const speed = Math.hypot(player.velocity.x, player.velocity.z)
+  legendPet.setLegend(stats.legend)
+  legendPet.update(dt, player.position, player.facing, Math.min(1, speed / player.moveSpeed))
+  sendPose(player, speed)
   remotePlayers.update(dt, player.position)
   updateCamera(camera, dt)
   sky.position.copy(camera.position)

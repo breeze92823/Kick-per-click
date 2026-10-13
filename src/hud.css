@@ -99,6 +99,54 @@
 #hud .inventory { background-image: var(--studs), linear-gradient(#ffc44a, #f2851e); }
 #hud .legends { background-image: var(--studs), linear-gradient(#ce90ff, #7c43e6); }
 
+/* --- Free spin banner (right edge, shown while a spin is in stock) ------------------- */
+#hud .spinbanner {
+  position: absolute;
+  right: calc(var(--k) * 24);
+  top: calc(50% - var(--k) * 60);
+  width: calc(var(--k) * 300);
+  height: calc(var(--k) * 108);
+  display: none;
+  background-image: var(--studs), linear-gradient(#6ee84a, #1fa818);
+  box-shadow: 0 0 0 calc(var(--k) * 4) #0a3a0a, 0 0 0 calc(var(--k) * 6) rgba(255, 255, 255, 0.85), inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.45);
+  animation: hud-spinbanner 1.4s ease-in-out infinite;
+}
+#hud .spinbanner.show { display: block; }
+#hud .spinbanner svg { position: absolute; left: calc(var(--k) * 14); top: calc(var(--k) * 20); width: calc(var(--k) * 68); height: calc(var(--k) * 68); animation: hud-spin 3s linear infinite; }
+#hud .spinbanner .t { position: absolute; left: calc(var(--k) * 94); right: calc(var(--k) * 8); text-align: center; --sc: #0a3a0a; }
+#hud .spinbanner .sbtitle { top: calc(var(--k) * 20); font-size: calc(var(--k) * 38); color: #fff35a; --sw: calc(var(--k) * 8); }
+#hud .spinbanner .sbsub { top: calc(var(--k) * 66); font-size: calc(var(--k) * 26); --sw: calc(var(--k) * 6); }
+/* Free spin timers: always visible under the banner's spot, independent of it. */
+#hud .spintimers { position: absolute; right: calc(var(--k) * 24); top: calc(50% + var(--k) * 60); width: calc(var(--k) * 360); display: flex; flex-direction: column; align-items: center; gap: calc(var(--k) * 2); pointer-events: none; }
+#hud .spintimers .t { white-space: nowrap; }
+#hud .spintimers .sbl { font-size: calc(var(--k) * 26); --sw: calc(var(--k) * 6); color: #fff; margin-top: calc(var(--k) * 8); }
+#hud .spintimers .sbon, #hud .spintimers .sboff { font-size: calc(var(--k) * 40); --sw: calc(var(--k) * 8); }
+#hud .spintimers .sbon { color: #9dff7a; }
+#hud .spintimers .sboff { color: #8fd0ff; }
+#hud .spinbanner { overflow: hidden; animation: hud-spinbanner 1.4s ease-in-out infinite, hud-spinglow 1.4s ease-in-out infinite; }
+/* Diagonal light streak sweeping across the banner. */
+#hud .spinbanner::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 38%;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0.15) 30%, rgba(255, 255, 255, 0.85) 50%, rgba(255, 255, 255, 0.15) 70%, transparent 100%);
+  transform: translateX(-160%) skewX(-18deg);
+  animation: hud-shine 2.2s ease-in-out infinite;
+}
+@keyframes hud-spinbanner { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes hud-spinglow {
+  0%, 100% { box-shadow: 0 0 0 calc(var(--k) * 4) #0a3a0a, 0 0 0 calc(var(--k) * 6) rgba(255, 255, 255, 0.85), 0 0 calc(var(--k) * 14) calc(var(--k) * 4) rgba(255, 240, 90, 0.45), inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.45); }
+  50% { box-shadow: 0 0 0 calc(var(--k) * 4) #0a3a0a, 0 0 0 calc(var(--k) * 6) rgba(255, 255, 255, 0.95), 0 0 calc(var(--k) * 34) calc(var(--k) * 12) rgba(255, 240, 90, 0.9), inset 0 0 0 calc(var(--k) * 3) rgba(255, 255, 255, 0.45); }
+}
+@keyframes hud-shine { 0% { transform: translateX(-160%) skewX(-18deg); } 55%, 100% { transform: translateX(380%) skewX(-18deg); } }
+/* Reduced motion: drop the movement (scale pulse, icon spin) but keep the glow and shine, which are the point of the banner. */
+@media (prefers-reduced-motion: reduce) { #hud .spinbanner { animation: hud-spinglow 1.4s ease-in-out infinite; } #hud .spinbanner svg { animation: none; } }
+
 /* --- Bottom-left counters ---------------------------------------------------- */
 #hud .counters { z-index: 6; position: absolute; left: 0; bottom: calc(var(--k) * 72); display: flex; flex-direction: column; gap: calc(var(--k) * 24); }
 #hud .counter {
@@ -344,6 +392,7 @@
 
 /* --- Kick lane: kick buttons at the bottom centre, clutter hidden ------------- */
 #hud .topbar { transition: top 0.25s, opacity 0.25s; }
+#hud.ball-air .topbar { opacity: 0; pointer-events: none; }
 #hud.lane .topbar { top: calc(100% - var(--k) * 124); }
 #hud.lane .power,
 #hud.lane .menu,

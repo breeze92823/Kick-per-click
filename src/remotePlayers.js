@@ -5,6 +5,7 @@ import { Group } from 'three'
 import { NET, PHYSICS } from './config.js'
 import { net } from './net.js'
 import { makeLabel } from './labels.js'
+import { createLegendPet } from './legendPet.js'
 import { buildDefaultCharacter, loadBaseCharacter } from './avatar/character.js'
 import { applyProportions, attachEquippedAccessories } from './avatar/loader.js'
 import { disposeAnimator, makeAnimator } from './avatar/animator.js'
@@ -24,6 +25,7 @@ class Remote {
     this.label = null
     this.placed = false
     this.vy = 0
+    this.pet = createLegendPet(parent)
     this.setAvatar(buildDefaultCharacter())
   }
 
@@ -90,10 +92,13 @@ class Remote {
       verticalVelocity: this.vy,
       turn: 0,
     })
+    this.pet.setLegend(p.legend || '')
+    this.pet.update(dt, g.position, g.rotation.y, p.speed01)
   }
 
   dispose(parent) {
     parent.remove(this.group)
+    this.pet.dispose()
     disposeAnimator(this.animator)
     if (this.label) {
       this.label.material.map?.dispose()
@@ -129,6 +134,7 @@ export function createRemotePlayers(scene) {
         let r = remotes.get(id)
         if (!r) remotes.set(id, (r = new Remote(root)))
         r.group.visible = d < NET.remoteFade
+        r.pet.setVisible(r.group.visible)
         if (r.group.visible) r.update(p, dt)
         else {
           r.placed = false // out of range: skip the work, snap into place when it comes back

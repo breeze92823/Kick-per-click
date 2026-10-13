@@ -3,6 +3,7 @@
 // DOM over the canvas; it only reads and calls stats.js.
 import './hud.css'
 import { showMenu } from './bloxity.js'
+import { wheelSpinSound, wheelWinSound } from './wheelSound.js'
 import { KICKBALL, LEGENDS, ZONES } from './config.js'
 import { ECONOMY } from './config.js'
 import {
@@ -15,7 +16,7 @@ import {
   unequipLegend,
   freeSpinLeft,
   grantPrize,
-  tickFreeSpin,
+  freeSpinNotice,
   useSpin,
   useLegend,
   kick,
@@ -92,6 +93,17 @@ const TEMPLATE = `
     <button class="tile studded rebirth" data-act="rebirth">${t('0%', 'pct')}${ICON.rebirth}${t('Rebirth')}</button>
     <button class="tile studded inventory" data-act="inventory">${ICON.backpack}${t('Inventory')}</button>
     <button class="tile studded legends" data-act="legends">${ICON.legend}${t('Legends')}</button>
+  </div>
+  <button class="spinbanner studded" data-act="openWheel">
+    <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="#ffd21a" stroke="#5a3a06" stroke-width="5"/><path d="M32 6 V58 M6 32 H58 M13.6 13.6 L50.4 50.4 M50.4 13.6 L13.6 50.4" stroke="#5a3a06" stroke-width="3"/><circle cx="32" cy="32" r="7" fill="#ff5a5a" stroke="#5a3a06" stroke-width="3"/></svg>
+    ${t('FREE SPIN!', 'sbtitle')}
+    ${t('Ready to spin', 'sbsub')}
+  </button>
+  <div class="spintimers">
+    ${t('Free spin every 15 min of play', 'sbl')}
+    ${t('Next in 15:00', 'sbon')}
+    ${t('Away 24 hrs = free spin', 'sbl')}
+    ${t('Next in 24h 00m', 'sboff')}
   </div>
   <div class="counters">
     <div class="counter rebirths">${ICON.rebirth}${t('0', 'n')}</div>
@@ -214,6 +226,10 @@ export function createHud() {
     invCount: $('.invcount'),
     invTrash: $('.invtrash'),
     invPlus: $('.invplus'),
+    spinBanner: $('.spinbanner'),
+    sbSub: $('.sbsub'),
+    sbOn: $('.sbon'),
+    sbOff: $('.sboff'),
     wlModal: $('.wlmodal'),
     wlSpins: $('.wlspins'),
     wlTimer: $('.wltimer'),
@@ -371,14 +387,30 @@ export function createHud() {
     el.wlSpins.textContent = `Spins: ${stats.spins}`
     el.wlTimer.textContent = `Free spin in: ${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
     el.wlSpin.classList.toggle('off', wheelSpinning || stats.spins < 1)
+    renderSpinBanner()
+  }
+  // Banner stays up while any spin is in stock; hidden while the wheel window is open.
+  function renderSpinBanner() {
+    const show = stats.spins >= 1 && !el.wlModal.classList.contains('show')
+    el.spinBanner.classList.toggle('show', show)
+    el.sbSub.textContent = stats.spins > 1 ? `${stats.spins} spins ready` : 'Tap to spin'
+  }
+  // Online: next spin after 30 min of play (mm:ss). Offline: a spin per 24h away (h + m left since last seen).
+  function renderSpinTimers() {
+    const m = freeSpinLeft()
+    el.sbOn.textContent = `Next in ${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+    const away = Math.max(0, ECONOMY.offlineSpinSeconds - Math.floor((Date.now() - stats.lastSeen) / 1000))
+    el.sbOff.textContent = `Next in ${Math.floor(away / 3600)}h ${String(Math.floor((away % 3600) / 60)).padStart(2, '0')}m`
   }
   function openWheel() {
     paintWheel()
     renderWheel()
     el.wlModal.classList.add('show')
+    renderSpinBanner()
   }
   function closeWheel() {
     if (!wheelSpinning) el.wlModal.classList.remove('show') // the result lands first
+    renderSpinBanner()
   }
   function spinWheel() {
     if (wheelSpinning) return
@@ -391,6 +423,7 @@ export function createHud() {
     const centre = (win + 0.5) * SLICE
     const jitter = (Math.random() - 0.5) * SLICE * 0.7
     const turn = wheelRot - (wheelRot % 360) + 360 * 6 + (360 - centre + jitter) // lands the slice under the top pointer
+    wheelSpinSound(wheelRot, turn - wheelRot, SLICE, 4.6)
     wheelRot = turn
     el.wlCanvas.style.transition = 'transform 4.6s cubic-bezier(0.12, 0.7, 0.1, 1)'
     el.wlCanvas.style.transform = `rotate(${turn}deg)`
@@ -399,6 +432,7 @@ export function createHud() {
       clearTimeout(fallback)
       wheelSpinning = false
       grantPrize(PRIZES[win])
+      wheelWinSound()
       toast(`You won ${PRIZES[win].label}!`)
       renderWheel()
     }
@@ -406,9 +440,16 @@ export function createHud() {
     el.wlCanvas.addEventListener('transitionend', done)
   }
   setInterval(() => {
-    tickFreeSpin()
     if (el.wlModal.classList.contains('show')) renderWheel()
+    renderSpinTimers()
   }, 500)
+  // FREE SPIN! toast for a spin earned by playtime or by coming back after 24h+.
+  function announceFreeSpin() {
+    const n = freeSpinNotice.count
+    if (!n) return
+    freeSpinNotice.count = 0
+    toast(n > 1 ? `FREE SPIN! x${n}` : 'FREE SPIN!', 'good')
+  }
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
@@ -579,7 +620,7 @@ export function createHud() {
   gainSfx.preload = 'auto'
   gainSfx.volume = 0.3
   let lastKickAt = -Infinity // ms; any kick (manual or auto) inside ECONOMY.kickCooldown is ignored
-  function kickNow(power = 1) {
+  function kickNow(power = 1, gainOnly = false) {
     const now = performance.now()
     if (now - lastKickAt < ECONOMY.kickCooldown * 1000) return
     lastKickAt = now
@@ -587,7 +628,7 @@ export function createHud() {
       gainSfx.currentTime = 0
       gainSfx.play()?.catch(() => {})
     } catch {}
-    onKick(power)
+    if (!gainOnly) onKick(power)
     const { gain } = kick(0.5 + 0.5 * power)
     const pop = document.createElement('span')
     pop.className = 't pop'
@@ -686,9 +727,17 @@ export function createHud() {
     if (!on) setAiming(false)
   }
   // Auto Click / Auto Kick skip the meter and kick at full power when the ball is free.
-  function autoKick() {
-    if (inLane && (aiming || isBusy())) return
-    kickNow(1)
+  // The Auto Click toggle (gainOnly) only gains power: no ball is launched.
+  function autoKick(gainOnly = false) {
+    if (!gainOnly && inLane && (aiming || isBusy())) return
+    kickNow(1, gainOnly)
+  }
+
+  // Auto Kick: in the kick lane it taps the Tap to Kick meter for you, but only ever lands 0%-50% power.
+  function autoLaneKick() {
+    if (!inLane || isBusy()) return
+    setAiming(false)
+    kickNow(Math.random() * 0.5)
   }
 
   const actions = {
@@ -743,6 +792,7 @@ export function createHud() {
     },
     closeLegends: () => el.lgModal.classList.remove('show'),
     closeWheel,
+    openWheel,
     spin: spinWheel,
   }
   // No focus on mousedown: Space (jump) must never re-click a HUD button.
@@ -757,14 +807,18 @@ export function createHud() {
   })
 
   onStats(() => {
+    announceFreeSpin()
     render()
     renderLevelUp()
     if (el.modal.classList.contains('show')) renderRebirth()
     if (el.lgModal.classList.contains('show')) renderLegends()
     if (el.invModal.classList.contains('show')) renderInventory()
     if (el.wlModal.classList.contains('show')) renderWheel()
+    else renderSpinBanner()
   })
+  announceFreeSpin()
   render()
+  renderSpinBanner()
   const windowOpen = () => !!root.querySelector('.modal.show')
-  return { windowOpen, openWheel, doKick, autoKick, setBusyCheck: (fn) => (isBusy = fn), setOnAim: (fn) => (onAim = fn), setPrompt, setLane, toast, setOnKick: (fn) => (onKick = fn), setHeadAnchor: (fn) => (headAnchor = fn), kickFx }
+  return { windowOpen, openWheel, doKick, autoKick, autoLaneKick, setBusyCheck: (fn) => (isBusy = fn), setOnAim: (fn) => (onAim = fn), setPrompt, setLane, toast, setOnKick: (fn) => (onKick = fn), setHeadAnchor: (fn) => (headAnchor = fn), kickFx }
 }

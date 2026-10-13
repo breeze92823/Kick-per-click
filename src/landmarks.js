@@ -26,7 +26,7 @@ import {
   TorusGeometry,
 } from 'three'
 import { addCollider } from './colliders.js'
-import { BALL_ROWS, BALLS, COLORS, ECONOMY, PAD_BALL, SITES, TRAINING_FIELDS } from './config.js'
+import { BALL_ROWS, BALLS, COLORS, ECONOMY, LEGENDS, PAD_BALL, SITES, TRAINING_FIELDS } from './config.js'
 import { faceOrigin } from './arena.js'
 import { makeLabel, paintText, whenFontsReady } from './labels.js'
 import { ballMaterial, netMaterial, solid, studMaterial } from './materials.js'
@@ -35,7 +35,7 @@ import { parkOnPad, player } from './player.js'
 import { inputState } from './input.js'
 import { authState } from './bloxity.js'
 import { net, onLeaderboard } from './net.js'
-import { ballKick, fieldUnlocked, formatNumber, freeSpinLeft, onStats, setField, stats, tickFreeSpin, useBall } from './stats.js'
+import { ballKick, fieldUnlocked, formatNumber, freeSpinLeft, onStats, setField, stats, useBall, useLegend } from './stats.js'
 
 const sphere = new SphereGeometry(1, 28, 18)
 const unitBox = new BoxGeometry(1, 1, 1)
@@ -233,7 +233,6 @@ function buildWheel(root, b, mat) {
 
   let shown = -1
   return (t) => {
-    tickFreeSpin()
     const left = freeSpinLeft()
     if (left !== shown) {
       shown = left
@@ -253,6 +252,7 @@ function timerLines(seconds) {
 }
 
 // --- "Next update" sign --------------------------------------------------------------------------
+const WHEEL_GLYPH = { trophy: '🏆', shoe: '👟', spin: '🔄', legend: '👑' } // same glyphs as the HUD wheel
 function buildSignBoard(root, b, mat) {
   const site = makeSite(root, b, SITES.signBoard.x, SITES.signBoard.z)
   const green = '#62c63a'
@@ -278,9 +278,20 @@ function buildSignBoard(root, b, mat) {
       g.arc(430, 230, 700, (i / 16) * Math.PI * 2, ((i + 1) / 16) * Math.PI * 2)
       g.fill()
     }
-    paintText(g, 'SIGN UP', 430, 120, 74, '#e7f06a', '#16300f')
-    paintText(g, 'NEXT UPDATE COMING', 430, 235, 70, '#e7f06a', '#16300f')
-    paintText(g, 'SOON', 430, 350, 74, '#e7f06a', '#16300f')
+    paintText(g, 'WIN ON THE SPIN WHEEL', 430, 62, 52, '#e7f06a', '#16300f')
+    const prizes = ECONOMY.wheelPrizes
+    const rows = Math.ceil(prizes.length / 2)
+    prizes.forEach((p, i) => {
+      const col = Math.floor(i / rows)
+      const row = i % rows
+      const cx = 225 + col * 410
+      const cy = 150 + row * 78
+      g.font = '56px sans-serif'
+      g.textAlign = 'center'
+      g.textBaseline = 'middle'
+      g.fillText(WHEEL_GLYPH[p.icon] ?? '', cx - 150, cy)
+      paintText(g, p.label, cx + 30, cy, 40, '#ffffff', '#16300f')
+    })
     tex.needsUpdate = true
   })
   site.add(new Mesh(new PlaneGeometry(8.6, 4.6), new MeshBasicMaterial({ map: tex })), 0, 5.4, 0.41)
@@ -303,7 +314,7 @@ function buildChest(root, b, mat) {
   site.box(mat, 0, 3.05, 0, 3.9, 0.4, 2.2, Y)
   site.box(mat, 0, 3.35, 0, 3.9, 0.3, 1.4, Y)
   site.box(mat, 0, 2.3, 1.4, 0.6, 0.8, 0.16, '#3a2a1a')
-  site.label([{ text: 'GROUP REWARD', px: 44, fill: 'gold' }], 0, 4.2, 0, { scale: 0.024 })
+  site.label([{ text: 'REWARDS', px: 44, fill: 'gold' }, { text: 'AVAILABLE IN 2 DAYS', px: 30 }], 0, 4.4, 0, { scale: 0.024 })
 }
 
 // --- Leaderboards ------------------------------------------------------------------------------------
@@ -342,14 +353,27 @@ function buildLeaderboards(root, b, mat) {
       g.fillRect(6, 6, 368, 60)
       paintText(g, board.title, 190, 37, 34, 'white')
       const name = authState.user?.username || authState.user?.displayName || 'You'
+      const rows = net.leaderboard[board.key] ?? []
+      const sid = net.sessionId
+      const isMine = (row) => row && ((sid && row.id === sid) || (!sid && row.name === name))
+      let mineIdx = rows.findIndex(isMine)
+      if (mineIdx < 0 && sid) mineIdx = rows.findIndex((row) => row.name === name)
       for (let r = 0; r < 10; r++) {
         const y = 72 + r * 48
-        g.fillStyle = r % 2 ? board.alt : board.row
+        // Outside the top 10: pin this player's own row to the last slot.
+        const pinned = r === 9 && mineIdx < 0 && net.connected && rows.length >= 10
+        const row = pinned ? { name, value: board.own() } : rows[r]
+        const mine = pinned || r === mineIdx
+        g.fillStyle = mine ? '#7dff6a' : r % 2 ? board.alt : board.row
         g.fillRect(6, y, 368, 44)
-        const row = net.leaderboard[board.key]?.[r]
-        paintText(g, `${r + 1}.`, 16, y + 23, 24, 'white', '#1b1b26', 'left')
+        if (mine) {
+          g.strokeStyle = '#0d7a00'
+          g.lineWidth = 4
+          g.strokeRect(8, y + 2, 364, 40)
+        }
+        paintText(g, pinned ? '…' : `${r + 1}.`, 16, y + 23, 24, 'white', '#1b1b26', 'left')
         if (row) {
-          paintText(g, String(row.name).slice(0, 14), 58, y + 23, 24, 'white', '#1b1b26', 'left')
+          paintText(g, String(row.name).slice(0, 14), 58, y + 23, 24, mine ? '#fff700' : 'white', '#1b1b26', 'left')
           paintText(g, board.format(row.value), 362, y + 23, 24, 'gold', '#1b1b26', 'right')
         } else if (!net.connected && r === 0) {
           // Offline: the board shows just this player.
@@ -461,19 +485,30 @@ function buildChili(root, b) {
     fig.add(arm)
   }
   site.collider(0, 0, 1.8, 1.8, 4.5)
-  site.label(
-    [
+  const legend = LEGENDS.find((l) => l.id === 'chilli')
+  const lines = () => {
+    const status =
+      stats.legend === legend.id
+        ? { text: 'EQUIPPED', fill: 'gold' }
+        : stats.legends.includes(legend.id)
+          ? { text: 'PRESS E TO EQUIP', fill: '#3cff55' }
+          : stats.wins >= legend.cost
+            ? { text: 'PRESS E TO BUY', fill: 'gold' }
+            : { text: 'LOCKED', fill: '#ff2d2d' }
+    return [
       { text: 'LIMITED', px: 30, fill: 'red' },
       { text: 'Chillin Chilli', px: 44, fill: 'white', stroke: '#6a0a0a' },
-      { text: '100x Wins', px: 32, fill: 'green' },
-      { text: '499', px: 30, fill: 'green', icon: 'gem' },
-      { text: '751 / 1000 left', px: 28, fill: 'gold' },
-    ],
-    0,
-    5,
-    0,
-    { scale: 0.022 },
-  )
+      { text: `${legend.mult}x Wins`, px: 32, fill: 'green' },
+      { ...status, px: 24 },
+      { text: `${formatNumber(legend.cost)} Wins`, px: 28, fill: 'white' },
+    ]
+  }
+  const label = site.label(lines(), 0, 5, 0, { scale: 0.022 })
+  onStats((what) => {
+    if (what === 'legends' || what === 'wins') label.setLines(lines())
+  })
+  const [wx, wz] = site.toWorld(0, 0)
+  return { wx, wz }
 }
 
 // --- Upgrade hill ---------------------------------------------------------------------------------------------
@@ -671,7 +706,7 @@ export function createLandmarks(scene, b, onResult = () => {}) {
   const repaintBoards = buildLeaderboards(root, b, mat)
   onLeaderboard(repaintBoards) // server rows arrive every few seconds
   buildNoob(root, b)
-  buildChili(root, b)
+  const chili = buildChili(root, b)
   const upgrades = buildUpgrades(root, b, mat)
   const portal = buildBeachPortal(root, b, mat)
 
@@ -716,6 +751,21 @@ export function createLandmarks(scene, b, onResult = () => {}) {
         if (parkable) parkOnPad(under.x, under.z) // walks to the spot, faces the goal; kicks animate on click
       }
       if (field) return fieldUnlocked(field) ? `Training: ${field.name} - Auto Kick` : `Needs ${field.rebirths} Rebirths`
+
+      if (Math.hypot(player.position.x - chili.wx, player.position.z - chili.wz) < 4.2 && player.position.y < 3) {
+        const l = LEGENDS.find((x) => x.id === 'chilli')
+        if (interact) {
+          const r = useLegend(l.id)
+          if (r === 'bought') onResult('Chillin Chilli Purchased!', true)
+          else if (r === 'equipped') onResult('Chillin Chilli Equipped', true)
+          else if (r === 'locked') onResult(`Need ${formatNumber(l.cost)} Wins to Buy`, false)
+          else if (r === 'full') onResult('Inventory full', false)
+        }
+        if (stats.legend === l.id) return 'Equipped'
+        if (stats.legends.includes(l.id)) return 'Press E to equip'
+        if (stats.wins >= l.cost) return 'Press E to buy'
+        return `Needs ${formatNumber(l.cost)} Wins`
+      }
 
       const pad = upgrades.padAt(player.position)
       if (pad) {

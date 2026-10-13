@@ -241,7 +241,9 @@ export const ECONOMY = {
   autoClickInterval: 0.25, // s between automatic kicks (never faster than kickCooldown)
   padKickInterval: 2, // s between the automatic kicks while standing on a training pad
   kickCooldown: 0.35, // s a manual click/F/KICK! must wait after the last kick (anti spam-click); Auto Kick obeys it too
-  freeSpinSeconds: 15 * 60,
+  freeSpinSeconds: 15 * 60, // s of continuous online play per free spin
+  offlineSpinSeconds: 24 * 60 * 60, // s away from the game per free spin granted on return
+  offlineSpinMax: 3, // most spins one return can grant
   invSlots: 2, // legends the inventory holds at the start
   invSlotCost: 1600000, // wins for the first extra slot; each further slot costs 2x more (1.6M, 3.2M, 6.4M...)
   // Lucky Wheel slices, clockwise from the pointer. `chance` is in percent and sums to 100.
@@ -490,7 +492,7 @@ export function coerceSetting(key, raw) {
 // Legends: the equipped one multiplies wins from kicks. Costs are paid in wins and
 // scale roughly with the multiplier (Chilli and Ronaldu extrapolated from the curve).
 export const LEGENDS = [
-  { id: 'chilli', name: 'Chillin Chilli', mult: 100, cost: 5e17, limited: true, left: '751 / 1000 left' },
+  { id: 'chilli', name: 'Chillin Chilli', mult: 100, cost: 5e6, limited: true },
   { id: 'ronaldu', tier: 'Divine', name: 'Ronaldu', mult: 50, cost: 2e12 },
   { id: 'cancello', tier: 'Common', name: 'Cancello', mult: 1, cost: 0 },
   { id: 'pogbo', tier: 'Rare', name: 'Pogbo', mult: 2, cost: 5500 },

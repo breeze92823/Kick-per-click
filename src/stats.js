@@ -5,11 +5,12 @@ import { BALLS, ECONOMY, KICKBALL, LANE, LEGENDS } from './config.js'
 
 const SAVE_KEY = 'kick-per-click:v3'
 const OLD_KEY = 'kick-per-click:v2' // rebirths started at 1 there
-const SAVED = ['level', 'kickPower', 'wins', 'rebirths', 'owned', 'equipped', 'playtime', 'legends', 'legend', 'invSlots', 'spins', 'freeAt']
+const SAVED = ['level', 'kickPower', 'wins', 'rebirths', 'owned', 'equipped', 'playtime', 'legends', 'legend', 'invSlots', 'spins', 'freeOnline', 'lastSeen']
 
 export const stats = {
   spins: 1, // Lucky Wheel spins in stock
-  freeAt: Date.now() + ECONOMY.freeSpinSeconds * 1000, // epoch ms the next free spin arrives
+  freeOnline: 0, // s played towards the next free spin
+  lastSeen: 0, // epoch ms of the last session activity (0 = never played)
   level: 1,
   kickPower: 0,
   wins: 0,
@@ -34,6 +35,22 @@ function applyData(data) {
   if (!stats.legends.includes(stats.legend)) stats.legend = ''
   stats.invSlots = Math.max(stats.invSlots, stats.legends.length)
   if (!BALLS[stats.equipped] || !stats.owned.includes(stats.equipped)) stats.equipped = 0
+  stats.freeOnline = Math.min(Math.max(0, stats.freeOnline), ECONOMY.freeSpinSeconds)
+  grantOfflineSpins()
+}
+
+// Free spins announced by the HUD's FREE SPIN! toast (the HUD may not exist yet when one lands on load).
+export const freeSpinNotice = { count: 0 }
+
+// A player away for 24h+ comes back to a free spin per full day (up to offlineSpinMax).
+function grantOfflineSpins() {
+  const now = Date.now()
+  const away = stats.lastSeen > 0 ? (now - stats.lastSeen) / 1000 : 0
+  stats.lastSeen = now
+  const n = Math.min(ECONOMY.offlineSpinMax, Math.floor(away / ECONOMY.offlineSpinSeconds))
+  if (n < 1) return
+  stats.spins += n
+  freeSpinNotice.count += n
 }
 
 try {
@@ -193,14 +210,16 @@ export function addWins(n) {
 }
 
 // --- Lucky Wheel -------------------------------------------------------------------------------
-export const freeSpinLeft = () => Math.max(0, Math.ceil((stats.freeAt - Date.now()) / 1000))
+export const freeSpinLeft = () => Math.max(0, Math.ceil(ECONOMY.freeSpinSeconds - stats.freeOnline))
 
-// Hands out the free spin once its timer runs out (call every frame; cheap).
-export function tickFreeSpin() {
-  if (Date.now() < stats.freeAt) return
+// Counts `dt` seconds of online play towards the free spin and hands it out when the timer fills.
+function tickFreeSpin(dt) {
+  stats.freeOnline += dt
+  if (stats.freeOnline < ECONOMY.freeSpinSeconds) return
+  stats.freeOnline -= ECONOMY.freeSpinSeconds
   stats.spins++
-  stats.freeAt = Date.now() + ECONOMY.freeSpinSeconds * 1000
-  changed('spins')
+  freeSpinNotice.count++
+  changed('freeSpin')
 }
 
 export function useSpin() {
@@ -291,6 +310,8 @@ let playtimeSaved = 0
 export function tickPlaytime(dt) {
   stats.playtime += dt
   playtimeSaved += dt
+  stats.lastSeen = Date.now()
+  tickFreeSpin(dt)
   if (playtimeSaved > 10) {
     playtimeSaved = 0
     save()
