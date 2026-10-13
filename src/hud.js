@@ -633,7 +633,7 @@ export function createHud() {
       gainSfx.currentTime = 0
       gainSfx.play()?.catch(() => {})
     } catch {}
-    if (!gainOnly) onKick(power)
+    onKick(power, gainOnly)
     const { gain } = kick(0.5 + 0.5 * power)
     const pop = document.createElement('span')
     pop.className = 't pop'

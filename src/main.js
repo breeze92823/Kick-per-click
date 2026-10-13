@@ -109,7 +109,8 @@ const ballKick = createBallKick(scene, avatar, {
 let inLane = false
 // Every kick (click, F, KICK!, auto): in the kick zone it launches the ball, elsewhere it juggles if idle.
 // Parked on a training pad: the player swings at the pad's ball and it flies into the goal.
-hud.setOnKick((power) => {
+hud.setOnKick((power, gainOnly) => {
+  if (gainOnly) return inLane ? false : avatar.juggle() // Auto Click: play the animation, launch nothing
   if (inLane) return ballKick.kick(power)
   if (player.atPad) {
     if (!landmarks.padBallReady()) return false // the last ball is still flying / respawning
