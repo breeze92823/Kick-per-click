@@ -4,9 +4,9 @@
 // stats.tutorialReady gates it until the server has answered. The step machine is tutorialLogic.js.
 import { ExtrudeGeometry, Group, InstancedMesh, Mesh, MeshStandardMaterial, Object3D, Shape } from 'three'
 import './tutorial.css'
-import { ARENA, DISABLE_TUTORIAL, SITES, TRAINING_FIELDS, TUTORIAL } from './config.js'
+import { ARENA, BALL_ROWS, BALLS, DISABLE_TUTORIAL, SITES, TRAINING_FIELDS, TUTORIAL } from './config.js'
 import { player, floorAt } from './player.js'
-import { levelCap, onStats, setTutorialStep, stats } from './stats.js'
+import { formatNumber, levelCap, onStats, setTutorialStep, stats } from './stats.js'
 import { nextStep } from './tutorialLogic.js'
 import { isTouch } from './device.js'
 
@@ -19,13 +19,17 @@ const BEACON_HEIGHT = 4.5 // m above the ground the big arrow floats
 // The x1 goal's training spot (landmarks.js buildTraining: the row runs along world z, the spot is 2.5 m in front).
 const GOAL = { x: SITES.training.x + 2.5, z: SITES.training.z + ((TRAINING_FIELDS.length - 1) / 2) * 7 }
 const LANE = { x: 0, z: ARENA.maxZ - 4 }
+// The tutorial ball's pad on the upgrade hill (landmarks.js buildUpgrades: front row, hill faces -X, tier 0 pad 5.3 m in).
+const BALL_SLOTS = BALL_ROWS[0] + 1
+const BALL_PAD = { x: SITES.upgrades.x - 5.3, z: SITES.upgrades.z + (TUTORIAL.ball - (BALL_SLOTS - 1) / 2) * ((24 - 3) / BALL_SLOTS) }
 
 // Where the UI arrow points on each step: [selector, side of the element it sits on].
 const UI_TARGETS = {
   0: ['.kick', 'top'],
   4: ['.kick', 'top'],
-  6: ['.wlmodal.show .wlspin', 'top'],
-  7: ['.wlmodal.show .wlx', 'top'],
+  9: ['.kick', 'top'],
+  11: ['.wlmodal.show .wlspin', 'top'],
+  12: ['.wlmodal.show .wlx', 'top'],
 }
 
 export function createTutorial(scene, hud) {
@@ -110,7 +114,7 @@ export function createTutorial(scene, hud) {
   const dummy = new Object3D()
 
   // The 3D target for a step, or null (steps that point at a button instead).
-  const target = (step) => (step === 1 ? GOAL : step === 3 ? LANE : step === 5 ? SITES.wheel : step === 8 ? SITES.upgrades : null)
+  const target = (step) => (step === 1 || step === 6 ? GOAL : step === 3 || step === 8 ? LANE : step === 5 ? BALL_PAD : step === 10 ? SITES.wheel : null)
 
   function drawGuide(step, t) {
     trail.count = 0
@@ -143,16 +147,16 @@ export function createTutorial(scene, hud) {
   }
 
   // --- Progress counters (events, not polled) ----------------------------------
-  let kicks = 0
-  let spun = false
+  let landed = false // a kick paid out Wins during step 9
+  let spun = false // the wheel was spun during steps 10-11
   onStats((what) => {
     const step = stats.tutorialStep
-    if (step >= TUTORIAL.steps) return
-    if ((step === 0 || step === 2) && (what === 'power' || what === 'level')) kicks++
-    if (what === 'spins' && (step === 5 || step === 6)) spun = true
+    if (step === 9 && what === 'wins') landed = true
+    if ((step === 10 || step === 11) && what === 'spins') spun = true
   })
 
   // --- Per frame -------------------------------------------------------------
+  const ballCost = BALLS[TUTORIAL.ball].cost
   let prev = stats.tutorialStep
   let completeUntil = 0
   function update(t, inLane) {
@@ -171,22 +175,23 @@ export function createTutorial(scene, hud) {
 
     const next = nextStep(step, {
       level: stats.level,
-      levelGoal: TUTORIAL.level,
-      kicks,
-      padKicks: TUTORIAL.padKicks,
+      level2: TUTORIAL.level2,
+      level3: TUTORIAL.level3,
+      level4: TUTORIAL.level4,
       onGoal: !!stats.field,
       inLane,
-      kicked: stats.wins > 0 || stats.bestDistance > 0,
+      canBuy: stats.wins >= ballCost,
+      hasBall: stats.owned.includes(TUTORIAL.ball),
+      landed,
       spins: stats.spins,
       wheelOpen: !!document.querySelector('.wlmodal.show'),
       spun,
       windowOpen: hud.windowOpen(),
-      nearHill: Math.hypot(player.position.x - SITES.upgrades.x, player.position.z - SITES.upgrades.z) < TUTORIAL.nearRadius,
       done: TUTORIAL.steps,
     })
     if (next !== step) {
-      if (next === 5) spun = false
-      if (next === 2) kicks = 0
+      if (next === 9) landed = false
+      if (next === 10) spun = false
       setTutorialStep(next) // saved by net.js
       return
     }
@@ -197,16 +202,21 @@ export function createTutorial(scene, hud) {
     else clearUi()
 
     const press = isTouch ? 'tap' : 'click'
+    const walkHint = 'Follow the arrows'
     const [title, hint] = [
       [`${press[0].toUpperCase()}${press.slice(1)} the screen to gain Kick Power (${Math.floor(stats.kickPower)}/${levelCap()})`, `Fill the bar to level up${isTouch ? '' : ' - KICK! or F works too'}`],
-      ['Walk onto the x1 Kick goal', 'Follow the arrows'],
-      [`Let the goal kick for you (${Math.min(kicks, TUTORIAL.padKicks)}/${TUTORIAL.padKicks})`, 'Stay on the goal - it kicks every few seconds'],
-      ['Head to the Kick Lane', 'Follow the arrows to the south end of the arena'],
-      ['Kick the ball down the lane!', `Press KICK!, then ${press} again to stop the meter near the top`],
+      ['Walk onto the x1 Kick goal', walkHint],
+      [`Train on the goal to reach Level ${TUTORIAL.level3} (${stats.level}/${TUTORIAL.level3})`, 'Stay on the goal - it kicks for you every few seconds'],
+      ['Head to the Kick Strip', 'Follow the arrows to the south end of the arena'],
+      [`Kick again and again to earn Wins (${formatNumber(Math.min(stats.wins, ballCost))}/${formatNumber(ballCost)})`, `Press KICK!, then ${press} again to stop the meter near the top`],
+      [`Buy the +${BALLS[TUTORIAL.ball].kick} Kick ball!`, 'Stand on its glowing pad up the hill and press E'],
+      ['Back to the x1 Kick goal', walkHint],
+      [`Train on the goal to reach Level ${TUTORIAL.level4} (${stats.level}/${TUTORIAL.level4})`, 'Your new ball kicks harder'],
+      ['Back to the Kick Strip', walkHint],
+      ['Take one more kick!', `Press KICK!, then ${press} again to stop the meter near the top`],
       ['Visit the Lucky Wheel', 'Walk onto the glowing pad'],
       ['Press SPIN!', 'Your first spin is free'],
       ['Close the window', ''],
-      ['Upgrade your football!', 'Walk up the hill and spend Wins on better balls'],
     ][step]
     paintBanner(`${step}|${title}|${hint}`, title, hint)
   }
