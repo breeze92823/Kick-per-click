@@ -143,6 +143,23 @@ function buildTraining(root, b, mat) {
     const [x, z] = site.toWorld(entry.fx, standZ)
     return { field: entry.field, x, z }
   }
+  // Several players can train on one pad: each takes the free slot nearest the centre (the others'
+  // positions come from the room), so nobody stands inside another player.
+  const SLOT_OFFSETS = [0, 1, -1, 2, -2] // m along the pad's width
+  const SLOT_TAKEN = 0.7 // m: another player this close to a slot occupies it
+  const spotOf = (entry) => {
+    const taken = []
+    const mine = net.sessionId
+    net.players?.forEach((p, id) => {
+      if (id !== mine) taken.push(p)
+    })
+    for (const off of SLOT_OFFSETS) {
+      const [x, z] = site.toWorld(entry.fx + off, standZ)
+      if (!taken.some((p) => Math.hypot(p.x - x, p.z - z) < SLOT_TAKEN)) return { x, z, off }
+    }
+    const [x, z] = site.toWorld(entry.fx, standZ) // pad full: share the centre
+    return { x, z, off: 0 }
+  }
   const restY = 0.3 + 0.4
   const { restZ, goalZ, arcHeight, flightTime, respawnDelay, popTime } = PAD_BALL
   for (const e of fields) e.ball.position.z = restZ
@@ -159,6 +176,18 @@ function buildTraining(root, b, mat) {
       if (Math.abs(lz) > half.d) return null
       for (const entry of fields) if (Math.abs(lx - entry.fx) <= half.w) return entryOf(entry)
       return null
+    },
+    // Where to stand on `field`: a free slot ({ x, z }); that field's ball is moved in front of it.
+    // Every other field's ball goes back to its centre.
+    claimSpot(field) {
+      let spot = null
+      for (const e of fields) {
+        if (e.field === field) {
+          spot = spotOf(e)
+          e.ball.position.x = e.fx + spot.off
+        } else e.ball.position.x = e.fx
+      }
+      return spot
     },
     setBall(def) {
       const m = ballMaterial(def.color, def.patch)
@@ -748,7 +777,8 @@ export function createLandmarks(scene, b, onResult = () => {}) {
       if (parkable !== parkedField) {
         parkedField = parkable
         padLeg = 'R'
-        if (parkable) parkOnPad(under.x, under.z) // walks to the spot, faces the goal; kicks animate on click
+        const spot = training.claimSpot(parkable) // also recentres the balls when stepping off
+        if (parkable) parkOnPad(spot.x, spot.z) // walks to the spot, faces the goal; kicks animate on click
       }
       if (field) return fieldUnlocked(field) ? `Training: ${field.name} - Auto Kick` : `Needs ${field.rebirths} Rebirths`
 

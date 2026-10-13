@@ -1,16 +1,19 @@
 // Player progression: kick power fills the level bar, the equipped football and
 // the training field set kick power per click, wins unlock footballs and rebirths.
 // Saved to localStorage (best effort: storage may be blocked).
-import { BALLS, ECONOMY, KICKBALL, LANE, LEGENDS } from './config.js'
+import { BALLS, ECONOMY, KICKBALL, LANE, LEGENDS, TUTORIAL } from './config.js'
 
 const SAVE_KEY = 'kick-per-click:v3'
 const OLD_KEY = 'kick-per-click:v2' // rebirths started at 1 there
-const SAVED = ['level', 'kickPower', 'wins', 'rebirths', 'owned', 'equipped', 'playtime', 'legends', 'legend', 'invSlots', 'spins', 'freeOnline', 'lastSeen']
+const SAVED = ['level', 'kickPower', 'wins', 'rebirths', 'owned', 'equipped', 'playtime', 'legends', 'legend', 'invSlots', 'spins', 'freeOnline', 'lastSeen', 'bestDistance', 'tutorialStep']
 
 export const stats = {
   spins: 1, // Lucky Wheel spins in stock
   freeOnline: 0, // s played towards the next free spin
   lastSeen: 0, // epoch ms of the last session activity (0 = never played)
+  bestDistance: 0, // m, longest kick ever
+  tutorialStep: 0, // onboarding progress, saved; TUTORIAL.steps = finished (tutorial.js)
+  tutorialReady: false, // the save (local or server) has been read, so we know whether this is a new player
   level: 1,
   kickPower: 0,
   wins: 0,
@@ -30,6 +33,8 @@ export const stats = {
 
 // Copies matching-typed saved fields onto stats and repairs anything that no longer exists.
 function applyData(data) {
+  // A save from before the tutorial existed belongs to a returning player: nothing left to teach.
+  if (typeof data.tutorialStep !== 'number') data = { ...data, tutorialStep: TUTORIAL.steps }
   for (const k of SAVED) if (typeof data[k] === typeof stats[k]) stats[k] = data[k]
   stats.legends = stats.legends.filter((id) => LEGENDS.some((l) => l.id === id))
   if (!stats.legends.includes(stats.legend)) stats.legend = ''
@@ -72,6 +77,16 @@ for (const [key, raw] of [
 ]) {
   const n = Number(raw)
   if (raw !== undefined && raw !== '' && Number.isFinite(n)) stats[key] = Math.max(key === 'level' ? 1 : 0, Math.floor(n))
+}
+
+// Called once the local save has been read (offline) or the server has answered (net.js).
+export function setTutorialReady() {
+  stats.tutorialReady = true
+}
+
+export function setTutorialStep(n) {
+  stats.tutorialStep = n
+  changed('tutorial')
 }
 
 let saveTimer = null
@@ -202,6 +217,15 @@ export function buyInvSlot() {
   stats.invSlots++
   changed('legends')
   return 'bought'
+}
+
+// A kick landed `metres` away: true when it beats the saved best.
+export function recordDistance(metres) {
+  const m = Math.floor(metres * 10) / 10
+  if (!(m > stats.bestDistance)) return false
+  stats.bestDistance = m
+  changed('bestDistance')
+  return true
 }
 
 export function addWins(n) {

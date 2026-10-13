@@ -125,7 +125,7 @@ const TEMPLATE = `
   <div class="winsreel"><div class="wr-win"><div class="wr-strip"></div></div></div>
   <div class="bouncepop t">BOUNCE!</div>
   <div class="bouncepop bonuspop t"></div>
-  <div class="zonebar studded">${ZONES.map(([n, c]) => `<div class="zone" style="--zc:${c}">${t(n)}</div>`).join('')}<div class="zmark">${ICON.ball}</div></div>
+  <div class="zonebar studded">${ZONES.map(([n, c]) => `<div class="zone" style="--zc:${c}">${t(n)}</div>`).join('')}<div class="zmark">${ICON.ball}<div class="zdp zme"></div></div><div class="zbests"></div></div>
   <div class="modal" data-act="closeRebirth">
     <div class="rbwin">
       <div class="rbhead studded-plate">
@@ -210,6 +210,8 @@ export function createHud() {
     zonebar: $('.zonebar'),
     zones: [...root.querySelectorAll('.zonebar .zone')],
     zmark: $('.zonebar .zmark'),
+    zbests: $('.zonebar .zbests'),
+    zme: $('.zonebar .zme'),
     rating: $('.rating'),
     ratingText: $('.rating .t'),
     dist: $('.dist'),
@@ -820,5 +822,50 @@ export function createHud() {
   render()
   renderSpinBanner()
   const windowOpen = () => !!root.querySelector('.modal.show')
-  return { windowOpen, openWheel, doKick, autoKick, autoLaneKick, setBusyCheck: (fn) => (isBusy = fn), setOnAim: (fn) => (onAim = fn), setPrompt, setLane, toast, setOnKick: (fn) => (onKick = fn), setHeadAnchor: (fn) => (headAnchor = fn), kickFx }
+  // Longest-kick markers on the zone bar: `own` { metres, pfp } (gold, BEST tag) and `others` [{ id, name, pfp, metres }]
+  // with their profile pictures. Rebuilt only when something changed.
+  let bestsKey = ''
+  const MAX_OTHERS = 8
+  function setBests(own, others) {
+    const fill = (dp, name, pfp) => {
+      dp.replaceChildren()
+      if (pfp) {
+        const img = document.createElement('img')
+        img.src = pfp
+        img.alt = ''
+        img.referrerPolicy = 'no-referrer'
+        img.onerror = () => img.remove()
+        dp.append(img)
+      }
+      dp.append(document.createTextNode(name.slice(0, 1).toUpperCase()))
+    }
+    // My DP rides under the travelling ball icon.
+    if (el.zme.dataset.pfp !== own.pfp) {
+      el.zme.dataset.pfp = own.pfp
+      fill(el.zme, 'You', own.pfp)
+    }
+    const list = others.slice(0, MAX_OTHERS)
+    const key = JSON.stringify([own, list])
+    if (key === bestsKey) return
+    bestsKey = key
+    el.zbests.replaceChildren()
+    const add = (cls, name, pfp, metres, tag) => {
+      const m = document.createElement('div')
+      m.className = `zbest ${cls}`
+      m.style.left = `${Math.min(1, metres / ECONOMY.laneLength) * 100}%`
+      m.title = `${name}: ${Math.floor(metres)}m`
+      const dp = document.createElement('div')
+      dp.className = 'zdp'
+      fill(dp, name, pfp)
+      const label = document.createElement('div')
+      label.className = 'zlabel'
+      label.textContent = tag ? `BEST ${Math.floor(metres)}m` : `${Math.floor(metres)}m`
+      m.append(dp, label)
+      el.zbests.append(m)
+    }
+    for (const o of [...list].reverse()) add('other', o.name, o.pfp, o.metres, false)
+    if (own.metres > 0) add('own', 'You', own.pfp, own.metres, true)
+  }
+
+  return { setBests, windowOpen, openWheel, doKick, autoKick, autoLaneKick, setBusyCheck: (fn) => (isBusy = fn), setOnAim: (fn) => (onAim = fn), setPrompt, setLane, toast, setOnKick: (fn) => (onKick = fn), setHeadAnchor: (fn) => (headAnchor = fn), kickFx }
 }

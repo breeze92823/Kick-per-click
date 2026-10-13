@@ -748,3 +748,50 @@
 #hud .invtrash svg { width: calc(var(--k) * 44); height: calc(var(--k) * 44); }
 #hud .invbest { width: calc(var(--k) * 178); background-image: var(--studs), linear-gradient(#a8f03a, #2fb818); }
 #hud .invbest .t { font-size: calc(var(--k) * 32); --sw: calc(var(--k) * 7); --sc: #0a3a0a; }
+#hud .zbests { position: absolute; left: calc(var(--k) * 6); right: calc(var(--k) * 6); top: calc(var(--k) * 190); height: 0; }
+#hud .zbest { position: absolute; width: 0; display: flex; flex-direction: column; align-items: center; }
+#hud .zbest::before {
+  content: '';
+  position: absolute;
+  top: calc(var(--k) * -190 + 6px);
+  left: calc(var(--k) * -2);
+  width: calc(var(--k) * 4);
+  height: calc(var(--k) * 190 - 6px);
+  background: #fff;
+  opacity: 0.55;
+}
+#hud .zbest.own::before { background: #ffd23a; opacity: 1; }
+#hud .zdp {
+  position: absolute;
+  width: calc(var(--k) * 44);
+  height: calc(var(--k) * 44);
+  left: calc(var(--k) * -22);
+  border-radius: 50%;
+  border: calc(var(--k) * 4) solid #fff;
+  background: #3a5a8a;
+  color: #fff;
+  font: 700 calc(var(--k) * 22) / calc(var(--k) * 36) 'Fredoka', sans-serif;
+  text-align: center;
+  overflow: hidden;
+}
+#hud .zbest.own .zdp { border-color: #ffd23a; width: calc(var(--k) * 52); height: calc(var(--k) * 52); left: calc(var(--k) * -26); line-height: calc(var(--k) * 44); }
+#hud .zdp img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#hud .zlabel {
+  position: absolute;
+  top: calc(var(--k) * 48);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font: 700 calc(var(--k) * 18) 'Fredoka', sans-serif;
+  color: #fff;
+  -webkit-text-stroke: calc(var(--k) * 5) #1b1b1b;
+  paint-order: stroke fill;
+}
+#hud .zbest.own .zlabel { color: #ffd23a; top: calc(var(--k) * 56); }
+#hud .zmark .zme {
+  top: calc(var(--k) * 54);
+  left: calc(var(--k) * -24);
+  width: calc(var(--k) * 48);
+  height: calc(var(--k) * 48);
+  line-height: calc(var(--k) * 40);
+  border-color: #ffd23a;
+}

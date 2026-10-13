@@ -6,6 +6,7 @@ import { NET, PHYSICS } from './config.js'
 import { net } from './net.js'
 import { makeLabel } from './labels.js'
 import { createLegendPet } from './legendPet.js'
+import { createAvatarBall } from './avatarBall.js'
 import { buildDefaultCharacter, loadBaseCharacter } from './avatar/character.js'
 import { applyProportions, attachEquippedAccessories } from './avatar/loader.js'
 import { disposeAnimator, makeAnimator } from './avatar/animator.js'
@@ -26,6 +27,8 @@ class Remote {
     this.placed = false
     this.vy = 0
     this.pet = createLegendPet(parent)
+    // Held ball + juggle / kick / kick-ready animations, replayed from the relayed `pose` string.
+    this.ball = createAvatarBall(this.group, { animator: () => this.animator, avatarY: () => this.avatar?.position.y ?? 0 })
     this.setAvatar(buildDefaultCharacter())
   }
 
@@ -34,7 +37,7 @@ class Remote {
     disposeAnimator(this.animator)
     this.avatar = next
     this.group.add(next)
-    this.animator = makeAnimator(next)
+    this.animator = makeAnimator(next, { holdsBall: true })
   }
 
   // A signed-in player's look arrives as JSON { equipped, proportions, skin }; "" = default.
@@ -86,12 +89,16 @@ class Remote {
     this.vy = this.placed ? this.vy + ((g.position.y - prevY) / dt - this.vy) * Math.min(1, dt * 10) : 0
     this.placed = true
 
+    this.ball.setBall(p.ball)
+    this.ball.applyPose(p.pose)
+    this.ball.update(dt)
     this.animator?.update(dt, {
       grounded: p.grounded,
       speed: p.speed01 * PHYSICS.moveSpeed,
       verticalVelocity: this.vy,
       turn: 0,
     })
+    this.ball.place(dt)
     this.pet.setLegend(p.legend || '')
     this.pet.update(dt, g.position, g.rotation.y, p.speed01)
   }
@@ -99,6 +106,7 @@ class Remote {
   dispose(parent) {
     parent.remove(this.group)
     this.pet.dispose()
+    this.ball.dispose()
     disposeAnimator(this.animator)
     if (this.label) {
       this.label.material.map?.dispose()

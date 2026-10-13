@@ -13,11 +13,12 @@ import { createLaneSections } from './laneSections.js'
 import { createLandmarks } from './landmarks.js'
 import { createHud } from './hud.js'
 import { createBallKick } from './ballKick.js'
-import { initNet, net, sendPose, syncAvatar } from './net.js'
+import { initNet, net, remoteBests, sendBest, sendPose, syncAvatar } from './net.js'
 import { createRemotePlayers } from './remotePlayers.js'
 import { createLegendPet } from './legendPet.js'
-import { addWins, kickRange, rangeFor, stats, tickPlaytime, winsForDistance } from './stats.js'
+import { addWins, kickRange, rangeFor, recordDistance, stats, tickPlaytime, winsForDistance } from './stats.js'
 import { createLoading, markLoaded } from './loading.js'
+import { createTutorial } from './tutorial.js'
 
 // --- Bloxity + player state -----------------------------------------------
 createLoading() // before init(): the portal overlay gets its first step text
@@ -64,6 +65,7 @@ let hud = null
 const landmarks = createLandmarks(scene, voxels, (text, ok = true) => hud?.toast(text, !ok)) // ball buy / equip results, same banner as every other message
 voxels.build(scene)
 hud = createHud()
+const tutorial = createTutorial(scene, hud)
 
 const avatar = createPlayerAvatar(scene)
 const remotePlayers = createRemotePlayers(scene)
@@ -75,6 +77,11 @@ function toScreen(p) {
   if (_ball.z > 1) return null
   return { x: (_ball.x * 0.5 + 0.5) * window.innerWidth, y: (-_ball.y * 0.5 + 0.5) * window.innerHeight }
 }
+// Longest-kick markers on the top zone bar: mine plus every other player's, with their Bloxity DP.
+function refreshBests() {
+  hud.setBests({ metres: stats.bestDistance, pfp: bloxity.getPfp() }, remoteBests())
+}
+let bestsTimer = 0
 let lastKick = null // dev: result of the latest landed kick (__game.lastKick)
 const ballKick = createBallKick(scene, avatar, {
   onLaunch: (power) => {
@@ -88,6 +95,8 @@ const ballKick = createBallKick(scene, avatar, {
     const wins = winsForDistance(metres, bonusPct)
     lastKick = { metres, wins, bonusPct }
     hud.kickFx.distanceDone(metres)
+    if (recordDistance(metres)) sendBest(stats.bestDistance)
+    refreshBests()
     hud.kickFx.winsReel(wins, toScreen(ballPos), () => addWins(wins)) // wins are credited when the reel locks
   },
   onReset: () => hud.kickFx.hideResult(),
@@ -146,12 +155,17 @@ renderer.setAnimationLoop(() => {
   elapsed += dt
   stepPlayer(dt)
   hud.setPrompt(landmarks.update(dt, elapsed))
+  if ((bestsTimer -= dt) < 0) {
+    bestsTimer = 0.5
+    refreshBests()
+  }
   const nearWheel = landmarks.atWheel()
   if (nearWheel && !wasNearWheel) hud.openWheel() // opens once per visit; walk off and back to reopen
   wasNearWheel = nearWheel
   if (!!player.padTarget !== onPad) avatar.setBallHeld(!(onPad = !!player.padTarget)) // the ball is on the pad's spot, not in the hands
   inLane = player.position.z > ARENA.maxZ - 9 && player.position.x > ARENA.minX && player.position.x < ARENA.maxX // kick strip, ramp and lane
   hud.setLane(inLane)
+  tutorial.update(elapsed, inLane)
   // Controls stay locked from the aim meter until the ball has landed and the camera is back.
   // An open HUD window (rebirth, wheel, legends) also freezes movement, camera look and zoom.
   const winOpen = hud.windowOpen()
@@ -194,7 +208,7 @@ renderer.setAnimationLoop(() => {
   const speed = Math.hypot(player.velocity.x, player.velocity.z)
   legendPet.setLegend(stats.legend)
   legendPet.update(dt, player.position, player.facing, Math.min(1, speed / player.moveSpeed))
-  sendPose(player, speed)
+  sendPose(player, speed, avatar.poseString())
   remotePlayers.update(dt, player.position)
   updateCamera(camera, dt)
   sky.position.copy(camera.position)

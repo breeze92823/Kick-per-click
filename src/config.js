@@ -506,3 +506,14 @@ export const LEGENDS = [
   { id: 'debruyn', tier: 'Divine', name: 'De Bruyn', mult: 60, cost: 20e12 },
   { id: 'haalando', tier: 'Divine', name: 'Haalando', mult: 75, cost: 10e15 },
 ]
+
+// --- New-player tutorial (tutorial.js, tutorialLogic.js) ------------------------------------------
+// The step is saved with the account (stats.tutorialStep); an account saved before the tutorial existed counts as finished.
+export const DISABLE_TUTORIAL = import.meta.env.VITE_DISABLE_TUTORIAL === 'true'
+export const TUTORIAL = {
+  steps: 9, // tutorialStep value meaning "finished"
+  level: 2, // step 0: click until Kick Power fills (15 at level 1) and this level is reached
+  padKicks: 3, // step 2: kicks the x1 goal must make while the player stands on it
+  nearRadius: 9, // m: how close counts as "at" the upgrade hill
+  completeMs: 3500, // how long the "Tutorial Complete!" banner stays
+}

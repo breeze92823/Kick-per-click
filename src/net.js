@@ -4,8 +4,8 @@
 // offline on the localStorage save.
 import { Client } from '@colyseus/sdk'
 import { DEV_MODE, GAME_SLUG, NET, SERVER_URL } from './config.js'
-import { authState, sdk, getEquippedAvatar, getProportions, getSkinTextureUrl, subscribeAuth } from './bloxity.js'
-import { hydrateStats, onStats, savedSnapshot, stats } from './stats.js'
+import { authState, getPfp, sdk, getEquippedAvatar, getProportions, getSkinTextureUrl, subscribeAuth } from './bloxity.js'
+import { hydrateStats, onStats, savedSnapshot, setTutorialReady, stats } from './stats.js'
 import { markLoaded } from './loading.js'
 
 const AVATAR_MAX = 3000 // backend AVATAR_MAX_LEN
@@ -43,6 +43,17 @@ function guestId() {
   }
 }
 const GUEST = guestId()
+
+export const sendBest = (distance) => send('kickBest', { distance })
+
+// Other players' longest kicks for the HUD zone bar: [{ id, name, pfp, metres }], best first.
+export function remoteBests() {
+  const out = []
+  net.players?.forEach((p, id) => {
+    if (id !== net.sessionId && p.bestDistance > 0) out.push({ id, name: p.username || 'Player', pfp: p.pfp || '', metres: p.bestDistance })
+  })
+  return out.sort((a, b) => b.metres - a.metres)
+}
 
 function identity() {
   const u = authState.user
@@ -109,13 +120,13 @@ function send(type, payload) {
 let lastPose = ''
 let lastPoseAt = 0
 // Throttled to NET.poseHz; skips repeats while standing still.
-export function sendPose(player, speed) {
+export function sendPose(player, speed, pose = '') {
   if (!net.connected) return
   const now = performance.now()
   if (now - lastPoseAt < 1000 / NET.poseHz) return
   lastPoseAt = now
   const r = (n) => Math.round(n * 100) / 100
-  const msg = { x: r(player.position.x), y: r(player.position.y), z: r(player.position.z), yaw: r(player.facing), speed01: r(Math.min(1, speed / player.moveSpeed)), grounded: player.grounded }
+  const msg = { x: r(player.position.x), y: r(player.position.y), z: r(player.position.z), yaw: r(player.facing), speed01: r(Math.min(1, speed / player.moveSpeed)), grounded: player.grounded, pose }
   const key = JSON.stringify(msg)
   if (key === lastPose) return
   lastPose = key
@@ -131,8 +142,11 @@ function syncEquipment() {
 }
 
 let sentAvatar = null
+let sentPfp = null
 export function syncAvatar() {
   if (!net.connected) return
+  const pfp = getPfp()
+  if (pfp !== sentPfp) send('setPfp', { pfp: (sentPfp = pfp) })
   const avatar = avatarJson()
   if (avatar === sentAvatar) return
   sentAvatar = avatar
@@ -147,6 +161,7 @@ function attach(room) {
     net.hydrated = true
     markLoaded('net')
     hydrateStats(doc ?? {})
+    setTutorialReady()
     lastSaved = snapshot() // what the server holds: don't echo it straight back
   })
   room.onMessage('noProgress', () => {
@@ -154,6 +169,7 @@ function attach(room) {
     net.hydrated = true
     markLoaded('net')
     lastSaved = ''
+    setTutorialReady() // a new account (or guest): the tutorial starts from the local step
     saveNow()
   })
   room.onMessage('serverError', () => {
@@ -173,7 +189,7 @@ function attach(room) {
     net.hydrated = false
     setTimeout(connect, 3000) // keep trying; local play is unaffected meanwhile
   })
-  sentBall = sentLegend = sentAvatar = null
+  sentBall = sentLegend = sentAvatar = sentPfp = null
   syncEquipment()
   syncAvatar()
 }
@@ -196,10 +212,11 @@ async function connect() {
     const id = identity()
     sentId = id.userId
     const client = new Client(await serverUrl())
-    attach(await client.joinOrCreate('world', { ...id, avatar: avatarJson() }))
+    attach(await client.joinOrCreate('world', { ...id, avatar: avatarJson(), pfp: getPfp() }))
   } catch (err) {
     if (!DEV_MODE) console.warn('[net] could not reach the server; playing offline', err?.message ?? err)
     markLoaded('net') // gave up for now: play offline rather than hold the loading screen
+    setTutorialReady()
     setTimeout(connect, 10000)
   } finally {
     connecting = false
@@ -209,6 +226,7 @@ async function connect() {
 export function initNet() {
   if (!SERVER_URL && !canResolve()) {
     markLoaded('net')
+    setTutorialReady()
     return console.info('[net] no server configured; playing offline')
   }
   onStats(() => {
