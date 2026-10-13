@@ -9,6 +9,7 @@ import { player, floorAt } from './player.js'
 import { formatNumber, levelCap, onStats, setTutorialStep, stats } from './stats.js'
 import { nextStep } from './tutorialLogic.js'
 import { isTouch } from './device.js'
+import { saveNow } from './net.js'
 
 const SPACING = 1.1 // m between trail arrows
 const SPEED = 1.8 // m/s the trail crawls toward the target
@@ -38,6 +39,18 @@ export function createTutorial(scene, hud) {
   banner.innerHTML = '<div class="tutorial" hidden><div class="tut-tag"></div><div class="tut-text"></div><div class="tut-sub"></div></div>'
   document.body.appendChild(banner)
   const box = banner.firstChild
+  const skip = document.createElement('button')
+  skip.className = 'tut-skip'
+  skip.type = 'button'
+  skip.textContent = 'SKIP'
+  skip.hidden = true
+  skip.addEventListener('click', (e) => {
+    e.stopPropagation()
+    setTutorialStep(TUTORIAL.steps) // update() then clears the guide and arrow
+    saveNow() // finished for good: send it to the backend now instead of waiting out the debounce
+  })
+  skip.addEventListener('pointerdown', (e) => e.stopPropagation()) // don't kick the world underneath
+  banner.appendChild(skip)
   const tag = box.querySelector('.tut-tag')
   const text = box.querySelector('.tut-text')
   const sub = box.querySelector('.tut-sub')
@@ -47,6 +60,7 @@ export function createTutorial(scene, hud) {
     const fresh = key.split('|')[0] !== shownKey.split('|')[0]
     shownKey = key
     box.hidden = !t
+    skip.hidden = !t || complete
     box.classList.toggle('complete', complete)
     tag.textContent = complete ? 'DONE' : 'TUTORIAL'
     text.textContent = t ?? ''
