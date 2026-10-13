@@ -179,6 +179,16 @@ function buildTraining(root, b, mat) {
     },
     // Where to stand on `field`: a free slot ({ x, z }); that field's ball is moved in front of it.
     // Every other field's ball goes back to its centre.
+    // True when another player with a lower session id (they keep the slot) stands on `spot`, e.g. both
+    // of us stepped onto the pad in the same moment.
+    contested(spot) {
+      const mine = net.sessionId
+      let hit = false
+      net.players?.forEach((p, id) => {
+        if (id < mine && Math.hypot(p.x - spot.x, p.z - spot.z) < SLOT_TAKEN) hit = true
+      })
+      return hit
+    },
     claimSpot(field) {
       let spot = null
       for (const e of fields) {
@@ -729,6 +739,7 @@ export function createLandmarks(scene, b, onResult = () => {}) {
   training.setBall(BALLS[stats.equipped] ?? BALLS[0])
   let padLeg = 'R' // the leg the next pad kick uses
   let parkedField = null // the unlocked field the player was last parked on (re-parks only after leaving it)
+  let parkedSpot = null // the slot ({ x, z }) claimed on that field
   const wheel = buildWheel(root, b, mat)
   buildSignBoard(root, b, mat)
   buildChest(root, b, mat)
@@ -777,8 +788,11 @@ export function createLandmarks(scene, b, onResult = () => {}) {
       if (parkable !== parkedField) {
         parkedField = parkable
         padLeg = 'R'
-        const spot = training.claimSpot(parkable) // also recentres the balls when stepping off
-        if (parkable) parkOnPad(spot.x, spot.z) // walks to the spot, faces the goal; kicks animate on click
+        parkedSpot = training.claimSpot(parkable) // also recentres the balls when stepping off
+        if (parkable) parkOnPad(parkedSpot.x, parkedSpot.z) // walks to the spot, faces the goal; kicks animate on click
+      } else if (parkable && parkedSpot && training.contested(parkedSpot)) {
+        parkedSpot = training.claimSpot(parkable) // someone with priority took our slot: shift to a free one
+        parkOnPad(parkedSpot.x, parkedSpot.z)
       }
       if (field) return fieldUnlocked(field) ? `Training: ${field.name} - Auto Kick` : `Needs ${field.rebirths} Rebirths`
 
