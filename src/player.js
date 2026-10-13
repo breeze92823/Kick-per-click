@@ -1,7 +1,7 @@
 import { inputState } from './input.js'
 import { getYaw, syncYawToPlayer } from './camera.js'
 import { baseFloor, floorUnder, pushOut } from './colliders.js'
-import { GROUND_Y, PHYSICS, PLAYER_DIMS, SPAWN, SPAWN_FACING, WORLD_BOUNDS } from './config.js'
+import { ARENA, GROUND_Y, PHYSICS, PLAYER_DIMS, SPAWN, SPAWN_FACING, WORLD_BOUNDS } from './config.js'
 
 // The local player singleton, mutated in place. Kinematic capsule stepped once
 // per frame: input -> gravity -> integrate -> walls/props -> floor. Solid
@@ -14,6 +14,7 @@ export const player = {
   moveSpeed: PHYSICS.moveSpeed,
   dims: { ...PLAYER_DIMS },
   padTarget: null, // { x, z } training-pad spot being walked to / parked on
+  walkTarget: null, // { x, z } auto-walk goal (Auto Kick heading for the kick strip); any move/jump input cancels it
   atPad: false, // reached padTarget: planted, facing the goal, kick animation on click
 }
 
@@ -25,6 +26,10 @@ let padNeedsNeutral = false
 export function parkOnPad(x, z) {
   player.padTarget = { x, z }
   player.atPad = false
+}
+
+export function walkTo(x, z) {
+  if (!player.padTarget) player.walkTarget = { x, z }
 }
 
 export function releasePad() {
@@ -43,6 +48,7 @@ export function resetPlayer(spawn = SPAWN, facing = SPAWN_FACING) {
   player.grounded = true
   player.facing = facing
   player.padTarget = null
+  player.walkTarget = null
   player.atPad = false
   sinceGrounded = 0
   jumpBuffered = 0
@@ -129,6 +135,21 @@ export function step(dt) {
     }
   }
 
+  // Auto-walk to the kick strip (Auto Kick): input steers away from it, otherwise head straight there.
+  const goal = player.walkTarget
+  if (goal) {
+    const dx = goal.x - player.position.x
+    const dz = goal.z - player.position.z
+    const d = Math.hypot(dx, dz)
+    if (len > 0.01 || inputState.jump || d < 0.5 || player.padTarget) player.walkTarget = null
+    else {
+      wishX = dx / d
+      wishZ = dz / d
+      speed = Math.min(player.moveSpeed, Math.max(2, d * 4))
+      moving = true
+    }
+  }
+
   // Snappy start, slightly softer stop; both scale with the walk speed.
   const rate = (moving ? PHYSICS.accel : PHYSICS.decel) * Math.max(1, player.moveSpeed / PHYSICS.moveSpeed)
   approach2D(player.velocity, wishX * speed, wishZ * speed, rate * dt)
@@ -155,7 +176,8 @@ export function step(dt) {
 
   const r = player.dims.radius
   p.x = Math.max(WORLD_BOUNDS.minX + r, Math.min(WORLD_BOUNDS.maxX - r, p.x))
-  p.z = Math.max(WORLD_BOUNDS.minZ + r, Math.min(WORLD_BOUNDS.maxZ - r, p.z))
+  // The lane is for the ball only: the player stops at the kick strip's south edge (the ramp's top).
+  p.z = Math.max(WORLD_BOUNDS.minZ + r, Math.min(Math.min(WORLD_BOUNDS.maxZ, ARENA.maxZ) - r, p.z))
 
   pushOut(p, r, player.dims.height)
 

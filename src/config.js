@@ -7,24 +7,45 @@ export const GAME_TITLE = 'Kick per Click'
 // Forces the Bloxity SDK and avatar CDN to be treated as unavailable (see .env.example).
 export const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
 
+// Colyseus game server (Kick-per-click-backend), one URL per Bloxity Legion channel: `npm run build`
+// (production) reads _MAIN, `npm run dev` and `npm run build:dev` read _DEV (`npm run dev` defaults to
+// the local server). Empty = net.js asks the Bloxity SDK for the channel's endpoint; with no SDK either
+// the game is offline (localStorage saving only, no other players).
+const SERVER_URL_DEV = import.meta.env.VITE_SERVER_URL_DEV || (import.meta.env.DEV ? 'ws://localhost:2567' : '')
+const SERVER_URL_MAIN = import.meta.env.VITE_SERVER_URL_MAIN || ''
+export const SERVER_URL = import.meta.env.MODE === 'production' ? SERVER_URL_MAIN : SERVER_URL_DEV
+export const NET = {
+  poseHz: 15, // pose messages per second
+  saveDebounce: 1.5, // s of quiet after a state change before saving
+  saveMaxWait: 8, // s: a continuous change stream (kicking) still saves this often
+  remoteLerp: 12, // 1/s: how fast remote players ease toward their last reported pose
+  remoteFade: 120, // m: remote players further away than this are hidden
+  maxRemotes: 24, // drawn at once (nearest first)
+}
+
 // --- World (metres: +X east, +Z south, +Y up) -------------------------------
 export const GROUND_Y = 0
 export const GROUND_SIZE = 440 // square stud-plate ground, centred on the origin
-export const WORLD_BOUNDS = { minX: -215, maxX: 215, minZ: -215, maxZ: 215 } // invisible backstop inside the ground edge
+export const WORLD_BOUNDS = { minX: -215, maxX: 215, minZ: -215, maxZ: 625 } // invisible backstop (maxZ: past the lane end, see LANE); backend constants.ts keeps a little slack
 export const SPAWN = { x: 0, y: 0.6, z: 0 } // on top of the football spawn pad
 export const SPAWN_FACING = 0 // yaw the character faces on spawn (0 = toward +Z: landmarks, then the kick lane)
 
 // --- Map layout (arena.js, landmarks.js) ---------------------------------------
 // The play area is a walled arena; the long kick lane runs south out of it.
+const ARENA_MAX_Z = 40 // south edge of the plaza: the lane (and the distance count) starts here
+// The kick lane: one equal-length section per ZONES entry (HUD zone bar), measured from ARENA.maxZ.
+// Everything that needs a distance (HUD zones, wins, ball range, lane end) reads from here.
+export const LANE = { length: 550, sections: 11, originZ: ARENA_MAX_Z }
+LANE.sectionLength = LANE.length / LANE.sections // 50 m
 export const ARENA = {
   minX: -46,
   maxX: 46,
   minZ: -46,
-  maxZ: 40,
+  maxZ: ARENA_MAX_Z,
   wallThickness: 6, // m per cliff ring (two rings, the outer one taller)
   wallHeight: { min: 18, max: 28 },
   column: 4, // m per cliff column along a wall
-  lane: { minX: -12, maxX: 12, endZ: 200, drop: 3, wallHeight: { min: 12, max: 18 } },
+  lane: { minX: -12, maxX: 12, endZ: ARENA_MAX_Z + LANE.length, drop: 3, wallHeight: { min: 12, max: 18 } },
 }
 export const SPAWN_PAD_RADIUS = 4.6
 
@@ -111,7 +132,7 @@ export const COLORS = {
   padSeam: '#7b7b88',
   padRim: '#3f3f4b',
 }
-export const FOG = { near: 140, far: 420 }
+export const FOG = { near: 160, far: 600 }
 
 // Sky dome (world.js): gradient, two rainbows, procedural clouds, sun disc.
 export const SKY = { radius: 900, cloudScale: 1.3, cloudCover: 0.5 }
@@ -120,26 +141,90 @@ export const SKY = { radius: 900, cloudScale: 1.3, cloudCover: 0.5 }
 export const UI_FONT = '"Fredoka", "Arial Rounded MT Bold", "Trebuchet MS", sans-serif'
 
 // --- Controls ------------------------------------------------------------------
-// Same as Clean-leaves-for-loot: first key/click captures the mouse (mouse-look); Esc frees it; right-drag orbits where lock is refused.
+// First key/click captures the mouse for mouse-look; Esc frees it. The cursor is freed automatically
+// while a HUD window or the Tap to Kick meter is up (world click / F still kick). false = always free, right-drag orbits.
 export const CONTROLS = { pointerLock: true }
 
 // --- Economy (stats.js) --------------------------------------------------------
-// The kicked ball (ballKick.js): a gravity arc down the lane that lands and stops (no bounce).
+// The kicked ball (ballKick.js, kickPlan.js): arcs down the lane joined by BOUNCE! rings; it lands and stops (no bounce).
 export const KICKBALL = {
-  gravity: 30, // m/s^2
-  angle: 30, // degrees above the horizon (flat enough to stay in the frozen follow-cam view)
-  baseSpeed: 20, // m/s launch speed before upgrades
-  speedPerDecade: 9, // m/s per decade (log10) of equippedBall.kick * level
-  speedPerRebirth: 3, // m/s per rebirth after the first
-  maxSpeed: 80, // m/s (about 190 m of range; the lane ends first)
+  gravity: 25, // m/s^2
+  // Range (metres, full power) = LANE.length * (log10(1 + S) / log10(1 + refKick * refLevel)) ^ curve,
+  // with S = equipped ball kick * Kick Power level. The reference state (ball +56 at Kick Power level 100)
+  // lands exactly on the lane end; any stronger product is capped there (kickPlan.js solves the flight).
+  range: { refKick: 56, refLevel: 100, curve: 1.5, minRange: 12 },
+  // The first arc's peak (m above the launch) grows with the ball's range: minApex at 0 m, maxApex at the lane end.
+  arc: { minApex: 3, maxApex: 32, curve: 0.8 },
+  // BOUNCE! rings keep the ball skipping down the lane: one ring per `every` m of range (up to `max`).
+  // The first arc peaks at `arc`; rings sit at `ringHeight` of that peak (above the floor); each ring
+  // re-lifts the ball so the next skip climbs `rise` of the peak above it (see kickPlan.js).
+  // Rings sit at random left/right offsets: each within the steering reach (`reach` of what the ball can cover
+  // in that arc) of the previous one, at least `minShift` m away from it, inside the walls by `edge` m.
+  rings: { max: 10, every: 80, ringHeight: 0.55, rise: 0.22, reach: 0.6, minShift: 4, edge: 3 },
+  // Bonus Win ring: now and then (`chance` per kick, only for kicks of at least `minRange` m) one extra ring
+  // hangs in the flight, between `from` and `to` of the flight time, at least `gap` s from any BOUNCE! ring and
+  // within `reach` of what steering can cover. Flying through it adds `pct` % of the base wins (before the
+  // multipliers). Tier odds are the `weight`s.
+  bonusRing: {
+    chance: 0.35, minRange: 60, from: 0.2, to: 0.92, gap: 0.6, reach: 0.45,
+    // All tiers share the same mint-green look; only the % differs.
+    tiers: [25, 50, 100].map((pct, i) => ({
+      pct, weight: [60, 30, 10][i], color: '#22ffa0', glow: '#22ffa0', fill: '#5dff3a', stroke: '#0a5a2a', rgb: [0.2, 1, 0.6],
+    })),
+  },
+  // Mid-air steering (A/D, arrows): eased lateral acceleration, capped speed, drag when released. Near a lane
+  // wall, steering toward it fades to nothing over `wallSlow` m (the ball keeps `wallMargin` m off the wall).
+  steer: { accel: 28, maxSpeed: 9, drag: 2.5, wallMargin: 0.6, wallSlow: 4 },
+  fullPowerAt: 0.9, // aim-meter power at and above this (PERFECT!) counts as full power: the ball's whole range (0.9 -> 1 maps to full)
   radius: 0.3, // m
   startForward: 0.7, // m in front of the player the ball leaves from
   startHeight: 0.5, // m above the feet
+  // Landing debris: stud chunks thrown round the ball (ballKick -> kickFx); small next to the 0.3 m ball.
+  crater: {
+    debrisRadius: 0.5, // m from the ball to the first chunks
+    chunks: 16, chunkSize: [0.1, 0.26], debrisSpread: 0.6,
+    colors: ['#8fe02a', '#7bc61e', '#a8ee3c', '#6a4a2a'],
+  },
+  // Wins reel (HUD): rows scroll and lock onto the earned amount.
+  winsReel: { spinSeconds: 2.23, rows: 18, volume: 0.6 }, // spinSeconds = length of audio/slot-machine-win.mp3
+  camHoldAfterLand: 5, // s the camera keeps following the ball after it lands
   landHold: 0.8, // s the landed ball is shown (with its distance) before the ball resets; the camera eases back as soon as it lands
   viewPitch: 0.2, // kick view (as Stone-Skipping's throw view): radians above the horizon
   viewDistance: 10, // m behind the player
   viewYawOffset: Math.PI / 6, // rotation about Y from directly behind
+  // BOUNCE! ring size.
+  ringRadius: 3, // m
+  ratings: [ // aim-meter power thresholds (0..1) -> banner text
+    { min: 0.9, text: 'PERFECT!', tier: 'perfect' },
+    { min: 0.65, text: 'GREAT!', tier: 'great' },
+    { min: 0.35, text: 'GOOD!', tier: 'good' },
+    { min: 0, text: 'OK', tier: 'ok' },
+  ],
 }
+
+// Distance zones shown on the top bar while a kicked ball travels: laneLength is split evenly.
+export const ZONES = [
+  ['Common', '#3fae7a'], ['Rare', '#2f9e6c'], ['Epic', '#1f8f5c'], ['Legend', '#c9b26a'],
+  ['Mythic', '#d8b45a'], ['Godly', '#e0533a'], ['Ancient', '#e4e4ea'], ['Divine', '#5ec04a'],
+  ['Eternal', '#27b6d4'], ['Celestial', '#2f5fd0'], ['Secret', '#d048c0'],
+]
+
+// Look of each lane section, in ZONES order (arena.js). lawn/curb: flank strips; path: 8 m centre strip
+// (null = the bare stud floor); wall/cap/capDark: cliff face, grass cap and drips; tuft/rock: lawn scatter;
+// tree: topiary ('round'), pine ('pine') or alternating ('mix') in leaf/leafDark/trunk.
+export const LANE_THEMES = [
+  { lawn: '#a6ef22', curb: '#e0672f', path: null, wall: '#ee7543', cap: '#8ade2e', capDark: '#6ec522', tuft: ['#6ec522', '#8fe03c'], rock: ['#7d98dc', '#93acec'], tree: { kind: 'mix', leaf: '#8fe03c', leafDark: '#6cc92c', trunk: '#8a5a35' } },
+  { lawn: '#52d68c', curb: '#1f9e6c', path: '#bfeed6', wall: '#2f9e8a', cap: '#3fc98a', capDark: '#2a9e6c', tuft: ['#2a9e6c', '#46d08c'], rock: ['#5fb7a8', '#8fd9c8'], tree: { kind: 'pine', leaf: '#3fc98a', leafDark: '#2a9e6c', trunk: '#6a4a30' } },
+  { lawn: '#3fae6a', curb: '#14683e', path: '#a5d9c2', wall: '#1f7f78', cap: '#2f9e5a', capDark: '#1f7c46', tuft: ['#1f7c46', '#37b266'], rock: ['#4a8fb0', '#7fb8d0'], tree: { kind: 'round', leaf: '#37b266', leafDark: '#1f7c46', trunk: '#5a3e28' } },
+  { lawn: '#ecd56e', curb: '#b8902a', path: '#fff0b0', wall: '#c9a24a', cap: '#f0cf55', capDark: '#c9a42e', tuft: ['#c9a42e', '#f6e07a'], rock: ['#d9b85a', '#f0d890'], tree: { kind: 'round', leaf: '#f2c94c', leafDark: '#d9a82e', trunk: '#8a6a35' } },
+  { lawn: '#f5c24a', curb: '#a8741a', path: '#ffd98a', wall: '#a8741a', cap: '#ffb347', capDark: '#d98a1f', tuft: ['#d98a1f', '#ffc766'], rock: ['#c98a3a', '#e8b070'], tree: { kind: 'pine', leaf: '#ffb347', leafDark: '#e08a1f', trunk: '#6a4020' } },
+  { lawn: '#d9482e', curb: '#7a1e12', path: '#ff8a2a', wall: '#8c2a1a', cap: '#e8582a', capDark: '#a8301a', tuft: ['#a8301a', '#ff7a30'], rock: ['#3a2a28', '#5a3a34'], tree: { kind: 'pine', leaf: '#b8321e', leafDark: '#7a1e12', trunk: '#2a1a16' } },
+  { lawn: '#e8e8f0', curb: '#a8a8bc', path: '#f8f8ff', wall: '#cfcfd9', cap: '#f4f4fa', capDark: '#c4c4d4', tuft: ['#c4c4d4', '#f4f4fa'], rock: ['#b0b0c4', '#d4d4e2'], tree: { kind: 'pine', leaf: '#d4dae6', leafDark: '#aab4c8', trunk: '#8a8a9a' } },
+  { lawn: '#6fe05a', curb: '#2f9a3a', path: '#c8f5b8', wall: '#3aa05a', cap: '#6fe05a', capDark: '#3fb04a', tuft: ['#3fb04a', '#8ff070'], rock: ['#7fd0a0', '#b0ecc8'], tree: { kind: 'round', leaf: '#ffb7d5', leafDark: '#f08ab8', trunk: '#8a5a45' } },
+  { lawn: '#c4f4f8', curb: '#27b6d4', path: '#e8fcff', wall: '#6fd8e6', cap: '#e8fcff', capDark: '#a8e8f2', tuft: ['#a8e8f2', '#ffffff'], rock: ['#7fcfe0', '#b8eaf4'], tree: { kind: 'pine', leaf: '#e6fbff', leafDark: '#9fdcec', trunk: '#6a8a9a' } },
+  { lawn: '#5c8cf0', curb: '#1d3fa8', path: '#9fbcff', wall: '#2a4fc0', cap: '#6a9aff', capDark: '#3a68d8', tuft: ['#3a68d8', '#8fb4ff'], rock: ['#2a3a90', '#5a6ac8'], tree: { kind: 'round', leaf: '#8fb4ff', leafDark: '#5a88f0', trunk: '#3a3a6a' } },
+  { lawn: '#c46cf2', curb: '#7a2aa8', path: '#e0a8ff', wall: '#8a38c0', cap: '#d27af8', capDark: '#a848d8', tuft: ['#a848d8', '#f0a0ff'], rock: ['#5a2a8a', '#9a5ac8'], tree: { kind: 'mix', leaf: '#f05ad8', leafDark: '#b83ab8', trunk: '#3a1a5a' } },
+]
 
 export const ECONOMY = {
   capBase: 10, // kick power that fills the bar at level L: capBase + capPerLevel * L
@@ -148,13 +233,30 @@ export const ECONOMY = {
   // rebirthLevels[r - 1], then +rebirthLevelStep per rebirth past the table.
   rebirthLevels: [20, 40, 60, 80, 100, 125, 150],
   rebirthLevelStep: 25,
-  multPerRebirth: 1, // permanent multiplier is 1 + multPerRebirth * rebirths (x1, x2, x3...), like Stone-Skipping
+  multPerRebirth: 0.2, // permanent multiplier is 1 + multPerRebirth * rebirths (x1, x1.2, x1.4...)
   // Wins for a kick grow exponentially with distance: winsMax at laneLength metres.
-  laneLength: 150,
-  winsMax: 300,
-  winsCurve: 5, // higher = flatter start, steeper finish
-  autoClickInterval: 0.25, // s between automatic kicks
-  freeSpinSeconds: 15 * 60,
+  laneLength: LANE.length,
+  winsMax: 50000,
+  winsCurve: 8.1, // higher = flatter start, steeper finish (8.1: a Level 3 perfect kick, ~35 m, pays ~10; 550 m pays winsMax)
+  autoClickInterval: 0.25, // s between automatic kicks (never faster than kickCooldown)
+  padKickInterval: 2, // s between the automatic kicks while standing on a training pad
+  kickCooldown: 0.35, // s a manual click/F/KICK! must wait after the last kick (anti spam-click); Auto Kick obeys it too
+  freeSpinSeconds: 15 * 60, // s of continuous online play per free spin
+  offlineSpinSeconds: 24 * 60 * 60, // s away from the game per free spin granted on return
+  offlineSpinMax: 3, // most spins one return can grant
+  invSlots: 2, // legends the inventory holds at the start
+  invSlotCost: 1600000, // wins for the first extra slot; each further slot costs 2x more (1.6M, 3.2M, 6.4M...)
+  // Lucky Wheel slices, clockwise from the pointer. `chance` is in percent and sums to 100.
+  wheelPrizes: [
+    { label: '+24K Wins', kind: 'wins', amount: 24000, chance: 17, color: '#35b6ff', icon: 'trophy' },
+    { label: '+150 Kick', kind: 'kick', amount: 150, chance: 20, color: '#5fdc3a', icon: 'shoe' },
+    { label: '+400K Wins', kind: 'wins', amount: 400000, chance: 2.5, color: '#a45cf0', icon: 'trophy' },
+    { label: '+40 Kick', kind: 'kick', amount: 40, chance: 30.4, color: '#ffb73a', icon: 'shoe' },
+    { label: '+120K Wins', kind: 'wins', amount: 120000, chance: 10, color: '#35b6ff', icon: 'trophy' },
+    { label: 'RONALDU', kind: 'legend', id: 'ronaldu', chance: 0.1, color: '#5fdc3a', icon: 'legend' },
+    { label: 'x2 Kick', kind: 'kick2x', chance: 8, color: '#a45cf0', icon: 'shoe' },
+    { label: '+1 Spin', kind: 'spin', amount: 1, chance: 12, color: '#ffc83a', icon: 'spin' },
+  ],
 }
 
 // Training goals, west to east. `rebirths` gates a field; `pass` fields show a pass banner.
@@ -163,15 +265,15 @@ export const TRAINING_FIELDS = [
   { name: 'x5 Kick', mult: 5, rebirths: 5, color: '#ff5fa8' },
   { name: 'x2 Kick', mult: 2, rebirths: 2, color: '#2f8cff' },
   { name: 'x8 Kick', mult: 8, rebirths: 10, color: '#23cfe6' },
-  { name: 'x80 Kick', mult: 80, rebirths: 0, pass: 'ULTRA', color: '#4fe03a' },
-  { name: 'x40 Kick', mult: 40, rebirths: 0, pass: 'VIP', color: '#ffd21f' },
+  { name: 'x80 Kick', mult: 80, rebirths: 50, pass: 'ULTRA', color: '#4fe03a' },
+  { name: 'x40 Kick', mult: 40, rebirths: 25, pass: 'VIP', color: '#ffd21f' },
 ]
 
 // Footballs on the upgrade hill: rows of 6, 6 and 8 (front to back). `cost` is
 // total wins needed to unlock; `kick` is kick power per click.
 export const BALLS = [
   { cost: 0, kick: 1, color: '#f4f4f4', patch: '#1d1d22' },
-  { cost: 10, kick: 2, color: '#34343c', patch: '#0d0d10' },
+  { cost: 8, kick: 2, color: '#34343c', patch: '#0d0d10' },
   { cost: 30, kick: 3, color: '#ead2a8', patch: '#5a3a1a' },
   { cost: 140, kick: 5, color: '#b0703c', patch: '#3a1e0a' },
   { cost: 500, kick: 7, color: '#d8323c', patch: '#3a0a0e' },
@@ -190,9 +292,11 @@ export const BALLS = [
   { cost: 25000, kick: 44, color: '#f8e030', patch: '#3a3008' },
   { cost: 34000, kick: 49, color: '#ffc020', patch: '#3a2a06' },
   { cost: 44000, kick: 56, color: '#ff3030', patch: '#3a0606' },
+  // Last entry: the Black Hole ball. Its kick is always 2x your best other ball (see ballKick in
+  // stats.js); `kick` is only a floor. ~3.4x the last ball's cost since it doubles the best ball.
+  { cost: 150000, kick: 2, color: '#07070c', patch: '#ff7a1a', blackHole: true },
 ]
-export const BALL_ROWS = [6, 6, 8]
-export const BLACK_HOLE_BALL = { price: 349 }
+export const BALL_ROWS = [6, 6, 8] // regular footballs only; the Black Hole ball sits after them in the front row
 
 // Hemisphere fill + one shadow-casting sun that follows the player (world.js).
 export const LIGHT = {
@@ -244,6 +348,21 @@ export const CAMERA = {
   speedFov: 4, // degrees the FOV widens at full speed
   speedEase: 3, // 1/s the speed framing eases in and out
   clearEase: 4, // 1/s the boom eases back out after a wall pulled it in
+  // Ball cam (camera.js): follows the kicked ball down the lane from low behind it.
+  ballCam: {
+    enabled: true, // false = the old frozen kick view that only slides along Z
+    distance: 5.5, // m behind the (smoothed) ball
+    height: 1.6, // m above the ball
+    lookRise: 1.1, // m the aim point sits above the ball, so the ball rides below screen centre
+    lookAhead: 12, // m down the lane the aim point sits
+    followXZ: 14, // 1/s horizontal follow; the lag also reads as a speed pull-back
+    followY: 4, // 1/s vertical follow, slow so the horizon stays steady over the arc
+    blendTime: 0.4, // s to ease from the player view to the ball cam
+    fovBoost: 16, // degrees added at full speed
+    fovSpeed: 60, // m/s that counts as full speed
+    fovEase: 4, // 1/s the FOV eases in and out
+    laneMargin: 1.2, // m the camera keeps from the lane walls
+  },
 }
 
 // --- Bloxity (bloxity.js, avatar/) -------------------------------------------------
@@ -271,6 +390,16 @@ export const PROPORTIONS = {
 }
 
 // Juggle kick sequence (playerAvatar.js): release, right-foot hit, left-foot hit, catch.
+// Training-pad ball loop: kick -> flies into the goal -> vanishes -> pops back in at the player's feet.
+export const PAD_BALL = {
+  flightTime: 0.4, // s from the foot to the goal
+  respawnDelay: 0.12, // s the ball stays gone after reaching the goal
+  popTime: 0.18, // s the new ball takes to pop in at the feet
+  restZ: 1.9, // m (pad-local) where the ball waits, just ahead of the planted feet
+  goalZ: -3.9, // m (pad-local) where the ball is swallowed by the goal
+  arcHeight: 0.9, // m peak of the flight
+}
+
 export const JUGGLE = {
   gravity: 16, // m/s^2 on the ball (game-feel, stronger than real)
   holdY: 0.98, // m, ball height in the hands
@@ -358,4 +487,34 @@ export function coerceSetting(key, raw) {
   if (spec.type === 'enum') return spec.values.includes(value) ? value : spec.def
   const n = Number(value)
   return clamp(Number.isFinite(n) ? n : Number(spec.def), spec.min, spec.max)
+}
+
+// Legends: the equipped one multiplies wins from kicks. Costs are paid in wins and
+// scale roughly with the multiplier (Chilli and Ronaldu extrapolated from the curve).
+export const LEGENDS = [
+  { id: 'chilli', name: 'Chillin Chilli', mult: 100, cost: 5e6, limited: true },
+  { id: 'ronaldu', tier: 'Divine', name: 'Ronaldu', mult: 50, cost: 2e12 },
+  { id: 'cancello', tier: 'Common', name: 'Cancello', mult: 1, cost: 0 },
+  { id: 'pogbo', tier: 'Rare', name: 'Pogbo', mult: 2, cost: 5500 },
+  { id: 'kvarra', tier: 'Rare', name: 'Kvarra', mult: 3, cost: 18000 },
+  { id: 'neymer', tier: 'Epic', name: 'Neymer', mult: 5, cost: 95000 },
+  { id: 'vinny', tier: 'Legendary', name: 'Vinny Jr', mult: 8, cost: 2.25e6 },
+  { id: 'sallah', tier: 'Legendary', name: 'Sallah', mult: 12, cost: 6.5e6 },
+  { id: 'yamol', tier: 'Divine', name: 'Yamol', mult: 20, cost: 20e6 },
+  { id: 'beckhem', tier: 'Divine', name: 'Beckhem', mult: 30, cost: 1e9 },
+  { id: 'kruyf', tier: 'Divine', name: 'Kruyf', mult: 40, cost: 100e9 },
+  { id: 'debruyn', tier: 'Divine', name: 'De Bruyn', mult: 60, cost: 20e12 },
+  { id: 'haalando', tier: 'Divine', name: 'Haalando', mult: 75, cost: 10e15 },
+]
+
+// --- New-player tutorial (tutorial.js, tutorialLogic.js) ------------------------------------------
+// The step is saved with the account (stats.tutorialStep); an account saved before the tutorial existed counts as finished.
+export const DISABLE_TUTORIAL = import.meta.env.VITE_DISABLE_TUTORIAL === 'true'
+export const TUTORIAL = {
+  steps: 13, // tutorialStep value meaning "finished" (backend constants.ts TUTORIAL_DONE_STEP must match)
+  level2: 2, // step 0: click until Kick Power fills (15 at level 1) and this level is reached
+  level3: 3, // step 2: train on the x1 goal up to this level
+  level4: 4, // step 7: after buying the ball, train up to this level
+  ball: 1, // the football the player is told to buy (+2 Kick)
+  completeMs: 3500, // how long the "Tutorial Complete!" banner stays
 }

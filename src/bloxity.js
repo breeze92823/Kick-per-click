@@ -217,6 +217,12 @@ export function getProportions() {
   }
 }
 
+// The signed-in player's profile picture URL (SDK user.pfp), '' for guests / no SDK.
+export function getPfp() {
+  const url = authState.user?.pfp ?? authState.guest?.pfp
+  return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : ''
+}
+
 // Skin texture URL with the worn face, shirt and pants already drawn on.
 export function getSkinTextureUrl() {
   try {

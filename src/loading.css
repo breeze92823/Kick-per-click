@@ -1,0 +1,24 @@
+.loading {
+  position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 18px; color: #fff; overflow: hidden;
+  font-family: Fredoka, system-ui, sans-serif;
+  background: linear-gradient(#5cc4ff, #3fae3f 70%, #2a7d2e);
+  transition-property: opacity; transition-timing-function: ease; pointer-events: all;
+}
+.loading.is-done { opacity: 0; pointer-events: none; }
+.loading > :not(.loading-drift) { position: relative; z-index: 1; }
+.loading h1 { margin: 0; font-size: clamp(28px, 6vw, 56px); letter-spacing: 3px; text-align: center; text-transform: uppercase; color: #ffd83a; -webkit-text-stroke: 3px #1d4a12; paint-order: stroke fill; text-shadow: 0 5px 0 #1d4a12; }
+.loading-logo { width: min(520px, 70vw); max-height: 50vh; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35)); user-select: none; }
+.loading p { margin: 0; font-size: clamp(22px, 3.5vw, 36px); font-weight: 700; color: #fff; -webkit-text-stroke: 5px #2b2b2b; paint-order: stroke fill; text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35); }
+.loading-track { position: absolute !important; bottom: 7vh; left: 50%; transform: translateX(-50%); width: min(960px, 80vw); height: 34px; border-radius: 17px; background: #1c4f6b; overflow: hidden; border: 3px solid #0e1f2a; box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.35); }
+.loading-fill { height: 100%; border-radius: 14px; background: linear-gradient(#ffe45c, #ffb11a); transition: width 0.1s linear; }
+.loading-pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; -webkit-text-stroke: 4px #3a2a08; paint-order: stroke fill; }
+.loading-drift { position: absolute; inset: 0; pointer-events: none; }
+.loading-drift span { position: absolute; top: -12%; opacity: 0.9; animation: loading-fall linear infinite; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.3)); }
+@keyframes loading-fall { from { transform: translateY(0) rotate(0deg); } to { transform: translateY(125vh) rotate(360deg); } }
+@media (max-height: 480px) {
+  .loading { gap: 8px; }
+  .loading-logo { max-height: 38vh; }
+  .loading-track { height: 26px; bottom: 6vh; }
+  .loading-pct { font-size: 17px; }
+}

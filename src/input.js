@@ -5,6 +5,7 @@ import { CONTROLS } from './config.js'
 
 export const inputState = {
   move: { x: 0, z: 0 }, // x = strafe (+ right), z = forward (+ forward)
+  steer: 0, // -1 / 0 / +1 left/right keys, read by the kicked ball even while controls are locked
   look: { dx: 0, dy: 0 }, // raw pixels since the camera last read them
   zoom: 0, // wheel notches since the camera last read them (+ = away)
   jump: false,
@@ -24,8 +25,16 @@ let armed = false
 
 const locked = () => !!canvas && document.pointerLockElement === canvas
 // Pointer lock can reject (sandboxed frame, post-Escape cooldown); that is not a fault.
+let windowOpen = false
+// A HUD window is open: hand the cursor back and refuse to retake it until it closes.
+export function setWindowOpen(on) {
+  windowOpen = on
+  if (on && locked()) document.exitPointerLock?.()
+  orbiting = false
+}
+
 function requestLock() {
-  if (!CONTROLS.pointerLock || !canvas || locked()) return
+  if (windowOpen || !CONTROLS.pointerLock || !canvas || locked()) return
   const r = canvas.requestPointerLock?.()
   if (r instanceof Promise) r.catch(() => {})
 }
@@ -46,6 +55,8 @@ export function setControlsLocked(on) {
 function recomputeMove() {
   let x = 0
   let z = 0
+  // Ball steering stays live while the controls are locked for a kick (A/D or arrows, + = right).
+  inputState.steer = (held.has('KeyD') || held.has('ArrowRight') ? 1 : 0) - (held.has('KeyA') || held.has('ArrowLeft') ? 1 : 0)
   if (controlsLocked) {
     inputState.move.x = 0
     inputState.move.z = 0
@@ -96,7 +107,7 @@ export function install(showMenu, canvasEl) {
       armed = true
       requestLock()
       // Retaking the cursor after Escape is not an action; where lock is refused, clicks act as before.
-      if (locked() || !lockEverGranted) inputState.action = true
+      if (locked() || !lockEverGranted || windowOpen) inputState.action = true
     }
   })
   window.addEventListener('pointerup', (e) => {

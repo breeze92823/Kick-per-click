@@ -1,9 +1,9 @@
-import { Group, Mesh, SphereGeometry } from 'three'
-import { ballMaterial } from './materials.js'
-import { JUGGLE } from './config.js'
+import { Group } from 'three'
+import { stats } from './stats.js'
 import * as bloxity from './bloxity.js'
 import { player } from './player.js'
 import { inputState } from './input.js'
+import { createAvatarBall } from './avatarBall.js'
 import { buildDefaultCharacter, loadBaseCharacter } from './avatar/character.js'
 import { applyProportions, attachEquippedAccessories } from './avatar/loader.js'
 import { disposeAnimator, makeAnimator } from './avatar/animator.js'
@@ -32,76 +32,7 @@ export function createPlayerAvatar(scene) {
   }
 
   // The ball the player cradles in both hands (the arms are posed by the animator).
-  const heldBall = new Mesh(new SphereGeometry(1, 24, 16), ballMaterial('#1b1b20', '#34343c'))
-  heldBall.scale.setScalar(0.3)
-  heldBall.castShadow = true
-  group.add(heldBall)
-  const J = JUGGLE
-
-  // Juggle sequence: release -> right foot -> left foot -> catch. Clicks while one
-  // is playing are ignored (the kick itself still scores in hud.doKick).
-  //   stage 0 hands open, ball still held   stage 1 ball falling to the right foot
-  //   stage 2 ball up, falling to the left  stage 3 ball up, falling into the hands
-  let seq = null
-  const ball = { y: J.holdY, vy: 0 }
-
-  // Seconds until a ball at (y, vy) next reaches `level` while moving down (Infinity if never).
-  function timeToLevel(level) {
-    const a = -0.5 * J.gravity
-    const c = ball.y - level
-    const disc = ball.vy * ball.vy - 4 * a * c
-    if (disc < 0) return Infinity
-    return (-ball.vy - Math.sqrt(disc)) / (2 * a)
-  }
-
-  function startJuggle() {
-    if (seq) return false
-    seq = { stage: 0, t: 0, swing: null }
-    ball.y = J.holdY
-    ball.vy = 0
-    return true
-  }
-
-  function stepJuggle(dt) {
-    seq.t += dt
-    if (seq.stage === 0) {
-      if (seq.t >= J.releaseDelay) seq.stage = 1
-    } else {
-      ball.vy -= J.gravity * dt
-      ball.y += ball.vy * dt
-    }
-
-    if (seq.swing) {
-      seq.swing.t += dt
-      if (!seq.swing.hit && seq.swing.t >= J.contactTime) {
-        seq.swing.hit = true
-        ball.y = J.kneeY
-        ball.vy = Math.sqrt(2 * J.gravity * (J.apex[seq.stage - 1] - J.kneeY))
-        seq.stage++
-      }
-      if (seq.swing.t >= J.swingDuration) seq.swing = null
-    } else if ((seq.stage === 1 || seq.stage === 2) && ball.vy < 0 && timeToLevel(J.kneeY) <= J.contactTime) {
-      seq.swing = { leg: seq.stage === 1 ? 'R' : 'L', t: 0, hit: false }
-    }
-
-    // Catch: ball falling back to hand height in the last stage.
-    if (seq.stage === 3 && ball.vy < 0 && ball.y <= J.holdY) {
-      ball.y = J.holdY
-      ball.vy = 0
-      if (!seq.swing) seq = null
-      else seq.stage = 4 // let the kicking leg finish its recovery first
-    }
-    if (seq?.stage === 4 && !seq.swing) seq = null
-  }
-
-  // Lane kick: one leg swing; `onContact` fires when the foot meets the ball.
-  let strike = null
-  let ballHidden = false
-  function kickSwing(onContact) {
-    if (strike) return false
-    strike = { leg: 'R', t: 0, hit: false, onContact }
-    return true
-  }
+  const ball = createAvatarBall(group, { animator: () => animator, avatarY: () => avatar?.position.y ?? 0 })
 
   setAvatar(buildDefaultCharacter()) // visible immediately; replaced once the rig loads
 
@@ -138,37 +69,23 @@ export function createPlayerAvatar(scene) {
   return {
     group,
     whenLoaded: (fn) => (loaded ? fn() : (onLoaded = fn)),
-    juggle: startJuggle,
-    kickSwing,
-    setBallHeld: (held) => (ballHidden = !held),
+    juggle: ball.juggle,
+    kickSwing: ball.kickSwing,
+    setKickReady: ball.setKickReady,
+    setBallHeld: ball.setBallHeld,
+    poseString: ball.poseString,
     update(dt) {
       group.position.set(player.position.x, player.position.y, player.position.z)
       group.rotation.y = player.facing // player.js turns the heading at a fixed rate
-      if (seq) stepJuggle(dt)
-      if (strike) {
-        strike.t += dt
-        if (!strike.hit && strike.t >= J.contactTime) {
-          strike.hit = true
-          strike.onContact()
-        }
-        if (strike.t >= J.swingDuration) strike = null
-      }
-      if (animator) {
-        // Hands stay open from the release until the ball drops back to catching height.
-        animator.armsOpen = !!seq && (seq.stage < 3 || ball.y > 1.45 || ball.vy > 0)
-        animator.legSwing = strike ?? seq?.swing ?? null
-      }
+      ball.setBall(stats.equipped)
+      ball.update(dt)
       animator?.update(dt, {
         grounded: player.grounded,
         speed: Math.hypot(player.velocity.x, player.velocity.z),
         verticalVelocity: player.velocity.y,
         turn: inputState.move.x,
       })
-      const free = seq && seq.stage > 0 && seq.stage < 4
-      heldBall.position.set(0, free ? ball.y : J.holdY + (avatar?.position.y ?? 0), J.holdZ)
-      heldBall.visible = !ballHidden
-      if (free) heldBall.rotation.x -= dt * 6 // tumbles in the air
-      else heldBall.rotation.x = 0
+      ball.place(dt)
     },
   }
 }
