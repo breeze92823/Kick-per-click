@@ -803,8 +803,10 @@
    bottom-right JUMP, bottom-centre power bar (or the KICK buttons in the lane). */
 html.compact #hud .topbar { --k: calc(var(--k0) * 0.85); top: calc(var(--k0) * 8); }
 html.compact #hud.lane .topbar { top: calc(100% - var(--k) * 124); }
-html.compact #hud .counters { --k: calc(var(--k0) * 0.55); top: calc(var(--k0) * 8); bottom: auto; left: env(safe-area-inset-left); gap: calc(var(--k) * 10); }
-html.compact #hud .menu { --k: calc(var(--k0) * 0.7); left: calc(var(--k0) * 10 + env(safe-area-inset-left)); top: calc(var(--k0) * 124); }
+/* Top-left 56px belongs to the Bloxity SDK pill (logo + menu), so counters sit in a row below it. */
+html.compact #hud .counters { --k: calc(var(--k0) * 0.55); top: calc(58px + env(safe-area-inset-top)); bottom: auto; left: env(safe-area-inset-left); flex-direction: row; gap: calc(var(--k) * 8); }
+html.compact #hud .counter { width: calc(var(--k) * 230); }
+html.compact #hud .menu { --k: calc(var(--k0) * 0.7); left: calc(var(--k0) * 10 + env(safe-area-inset-left)); top: calc(58px + var(--k0) * 56 + env(safe-area-inset-top)); }
 html.compact #hud .tile .t { font-size: calc(var(--k) * 23); --sw: calc(var(--k) * 5); }
 html.compact #hud .power { --k: calc(var(--k0) * 0.62); bottom: calc(var(--k0) * 8); }
 html.compact #hud .spinbanner { --k: calc(var(--k0) * 0.5); right: calc(var(--k0) * 8 + env(safe-area-inset-right)); top: calc(var(--k0) * 78); }
@@ -842,3 +844,7 @@ html.touch #hud .prompt.show { pointer-events: auto; touch-action: none; left: a
 html.touch #hud .lgbody, html.touch #hud .invgrid { touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 /* Narrow phones (e.g. 667px): shrink the kick buttons so the Log in button and JUMP keep clear of them. */
 @media (max-width: 760px) { html.compact #hud .topbar { --k: calc(var(--k0) * 0.7); } }
+@media (max-width: 760px) {
+  html.compact #hud .power { --k: calc(var(--k0) * 0.5); }
+  html.compact #hud:not(.lane) .topbar { left: calc(50% + 45px); } /* clear of the Bloxity SDK pill */
+}
