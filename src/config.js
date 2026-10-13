@@ -494,7 +494,7 @@ export function coerceSetting(key, raw) {
 export const LEGENDS = [
   { id: 'chilli', name: 'Chillin Chilli', mult: 100, cost: 5e6, limited: true },
   { id: 'ronaldu', tier: 'Divine', name: 'Ronaldu', mult: 50, cost: 2e12 },
-  { id: 'cancello', tier: 'Common', name: 'Cancello', mult: 1, cost: 0 },
+  { id: 'cancello', tier: 'Common', name: 'Cancello', mult: 1.5, cost: 0 },
   { id: 'pogbo', tier: 'Rare', name: 'Pogbo', mult: 2, cost: 5500 },
   { id: 'kvarra', tier: 'Rare', name: 'Kvarra', mult: 3, cost: 18000 },
   { id: 'neymer', tier: 'Epic', name: 'Neymer', mult: 5, cost: 95000 },

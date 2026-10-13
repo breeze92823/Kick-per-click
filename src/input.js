@@ -52,6 +52,8 @@ export function setControlsLocked(on) {
   recomputeMove()
 }
 
+export const isControlsLocked = () => controlsLocked
+
 function recomputeMove() {
   let x = 0
   let z = 0

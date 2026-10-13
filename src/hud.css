@@ -1,6 +1,7 @@
 /* HUD laid out on a 1920x991 reference screen: every size is N * --k. */
+:root { --k0: min(calc(100vw / 1920), calc(100vh / 991)); --W: 100vw; --H: 100vh; } /* device.js installViewport() overrides these */
 #hud {
-  --k: min(calc(100vw / 1920), calc(100vh / 991));
+  --k: var(--k0);
   --ink: #1b1b28;
   --studs: radial-gradient(circle at 50% 50%, transparent 0 26%, rgba(255, 255, 255, 0.34) 28% 37%, transparent 39%);
   --studs-dark: radial-gradient(circle at 50% 50%, transparent 0 26%, rgba(0, 0, 0, 0.07) 28% 37%, transparent 39%);
@@ -28,7 +29,7 @@
   cursor: pointer;
   transition: transform 0.08s;
 }
-#hud button:hover { transform: scale(1.04); }
+@media (hover: hover) { #hud button:hover { transform: scale(1.04); } }
 #hud button:active { transform: scale(0.94); }
 #hud svg { display: block; overflow: visible; }
 /* Outlined lettering. --sw / --sc override stroke width and colour. */
@@ -795,3 +796,49 @@
   line-height: calc(var(--k) * 40);
   border-color: #ffd23a;
 }
+
+/* --- Compact layout (phones, small windows): 1000x500 grid, each group scaled so nothing overlaps ---------
+   --k0 is px per unit (device.js). Every group sets its own --k, so the calc(var(--k) * N) sizes above still apply.
+   Clear zones: top-left counters + menu, top-right Menu/Fullscreen buttons (44px each), bottom-left stick,
+   bottom-right JUMP, bottom-centre power bar (or the KICK buttons in the lane). */
+html.compact #hud .topbar { --k: calc(var(--k0) * 0.85); top: calc(var(--k0) * 8); }
+html.compact #hud.lane .topbar { top: calc(100% - var(--k) * 124); }
+html.compact #hud .counters { --k: calc(var(--k0) * 0.55); top: calc(var(--k0) * 8); bottom: auto; left: env(safe-area-inset-left); gap: calc(var(--k) * 10); }
+html.compact #hud .menu { --k: calc(var(--k0) * 0.7); left: calc(var(--k0) * 10 + env(safe-area-inset-left)); top: calc(var(--k0) * 124); }
+html.compact #hud .tile .t { font-size: calc(var(--k) * 23); --sw: calc(var(--k) * 5); }
+html.compact #hud .power { --k: calc(var(--k0) * 0.62); bottom: calc(var(--k0) * 8); }
+html.compact #hud .spinbanner { --k: calc(var(--k0) * 0.5); right: calc(var(--k0) * 8 + env(safe-area-inset-right)); top: calc(var(--k0) * 78); }
+html.compact #hud .spintimers { --k: calc(var(--k0) * 0.5); right: calc(var(--k0) * 8 + env(safe-area-inset-right)); top: calc(var(--k0) * 78 + var(--k) * 116); width: calc(var(--k) * 300); }
+html.compact #hud .spintimers .sbl { display: none; }
+html.compact #hud .spintimers .sbon, html.compact #hud .spintimers .sboff { font-size: calc(var(--k) * 34); }
+
+/* Messages: wrap instead of running off the screen. */
+html.compact #hud .toast { --k: calc(var(--k0) * 0.55); bottom: calc(var(--k0) * 110); max-width: 70%; text-align: center; }
+html.compact #hud .toast.t { white-space: normal; }
+html.compact #hud .prompt { --k: calc(var(--k0) * 0.6); bottom: calc(var(--k0) * 100); }
+html.compact #hud .levelup { --k: calc(var(--k0) * 0.7); top: calc(var(--k0) * 76); }
+html.compact #hud .pop { font-size: calc(var(--k0) * 28); }
+html.compact .tut-banner { --k: calc(var(--k0) * 0.55); top: calc(var(--k0) * 104); }
+body.win-open .tut-banner { display: none; }
+
+/* Kick feedback. */
+html.compact #hud .rating { --k: calc(var(--k0) * 0.7); top: calc(var(--k0) * 108); }
+html.compact #hud .dist { --k: calc(var(--k0) * 0.6); }
+html.compact #hud .winsreel { --k: calc(var(--k0) * 0.7); }
+html.compact #hud .bouncepop { --k: calc(var(--k0) * 0.6); }
+html.compact #hud .zonebar { --k: calc(var(--k0) * 0.7); top: calc(var(--k0) * 8 + env(safe-area-inset-top)); width: min(calc(var(--k) * 1090), calc(var(--W) - 230px)); }
+/* Aim meter sits right of the KICK buttons, clear of the stick and JUMP. */
+html.compact #hud .aim { --k: calc(var(--k0) * 0.7); left: calc(50% + var(--k0) * 300); top: calc(var(--k0) * 172); }
+html.compact #hud .meter { height: calc(var(--k) * 330); }
+html.compact #hud .aim .tap { top: calc(var(--k) * 346); font-size: calc(var(--k) * 42); }
+
+/* Windows: each fits the short screen on its own. */
+html.compact #hud .modal { --k: min(calc(var(--W) / 960), calc(var(--H) / 780)); }
+html.compact #hud .wlmodal { --k: min(calc(var(--W) / 1010), calc(var(--H) / 1010)); }
+
+/* Touch: the walk-up prompt is the E button (right side, above JUMP). */
+html.touch #hud .prompt.show { pointer-events: auto; touch-action: none; left: auto; right: calc(var(--k0) * 8 + env(safe-area-inset-right)); bottom: calc(var(--k0) * 124); transform: none; z-index: 13;
+  padding: 6px 16px; background: rgba(28, 28, 32, 0.72); border: 4px solid #121212; border-radius: 30px; --k: calc(var(--k0) * 0.6); }
+html.touch #hud .lgbody, html.touch #hud .invgrid { touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+/* Narrow phones (e.g. 667px): shrink the kick buttons so the Log in button and JUMP keep clear of them. */
+@media (max-width: 760px) { html.compact #hud .topbar { --k: calc(var(--k0) * 0.7); } }

@@ -3,6 +3,7 @@
 // DOM over the canvas; it only reads and calls stats.js.
 import './hud.css'
 import { showMenu } from './bloxity.js'
+import { isTouch } from './device.js'
 import { wheelSpinSound, wheelWinSound } from './wheelSound.js'
 import { KICKBALL, LEGENDS, ZONES } from './config.js'
 import { ECONOMY } from './config.js'
@@ -607,7 +608,7 @@ export function createHud() {
         else el.toast.classList.remove('show')
       }
     }
-    const shown = needs ? '' : (text ?? '')
+    const shown = needs ? '' : isTouch ? (text ?? '').replace('Press E to', 'Tap to') : (text ?? '') // touch: the prompt is the E button
     el.prompt.textContent = shown
     el.prompt.classList.toggle('show', !!shown)
     el.prompt.classList.toggle('good', /^Training:/.test(shown))

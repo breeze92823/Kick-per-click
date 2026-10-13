@@ -22,7 +22,7 @@ export const stats = {
   equipped: 0,
   playtime: 0, // s
   legends: ['cancello'], // owned legend ids
-  legend: 'cancello', // equipped legend ('' = none): its wins multiplier applies to kicks
+  legend: '', // equipped legend ('' = none): its wins multiplier applies to kicks
   invSlots: ECONOMY.invSlots, // how many legends the inventory can hold
   kickPass: 1, // the "1X > 2X KICK" pass multiplier
   friendBoost: 0, // % bonus from friends in the server
