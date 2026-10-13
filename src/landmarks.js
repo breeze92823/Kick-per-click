@@ -145,20 +145,22 @@ function buildTraining(root, b, mat) {
   }
   // Several players can train on one pad: each takes the free slot nearest the centre (the others'
   // positions come from the room), so nobody stands inside another player.
-  const SLOT_OFFSETS = [0, 1, -1, 2, -2] // m along the pad's width
-  const SLOT_TAKEN = 0.7 // m: another player this close to a slot occupies it
+  const SLOT_OFFSETS = [0, 1.3, -1.3, 2.6, -2.6] // m along the pad's width (pad is 6.6 wide)
+  const SLOT_TAKEN = 0.9 // m: another player this close to a slot occupies it
   const spotOf = (entry) => {
     const taken = []
     const mine = net.sessionId
     net.players?.forEach((p, id) => {
       if (id !== mine) taken.push(p)
     })
+    let best = null
     for (const off of SLOT_OFFSETS) {
       const [x, z] = site.toWorld(entry.fx + off, standZ)
-      if (!taken.some((p) => Math.hypot(p.x - x, p.z - z) < SLOT_TAKEN)) return { x, z, off }
+      const nearest = taken.reduce((m, p) => Math.min(m, Math.hypot(p.x - x, p.z - z)), Infinity)
+      if (nearest >= SLOT_TAKEN) return { x, z, off }
+      if (!best || nearest > best.nearest) best = { x, z, off, nearest }
     }
-    const [x, z] = site.toWorld(entry.fx, standZ) // pad full: share the centre
-    return { x, z, off: 0 }
+    return { x: best.x, z: best.z, off: best.off } // pad full: the roomiest slot, not the centre
   }
   const restY = 0.3 + 0.4
   const { restZ, goalZ, arcHeight, flightTime, respawnDelay, popTime } = PAD_BALL
@@ -791,8 +793,11 @@ export function createLandmarks(scene, b, onResult = () => {}) {
         parkedSpot = training.claimSpot(parkable) // also recentres the balls when stepping off
         if (parkable) parkOnPad(parkedSpot.x, parkedSpot.z) // walks to the spot, faces the goal; kicks animate on click
       } else if (parkable && parkedSpot && training.contested(parkedSpot)) {
-        parkedSpot = training.claimSpot(parkable) // someone with priority took our slot: shift to a free one
-        parkOnPad(parkedSpot.x, parkedSpot.z)
+        const next = training.claimSpot(parkable) // someone with priority took our slot: shift to a free one
+        if (next.off !== parkedSpot.off) {
+          parkedSpot = next
+          parkOnPad(parkedSpot.x, parkedSpot.z)
+        }
       }
       if (field) return fieldUnlocked(field) ? `Training: ${field.name} - Auto Kick` : `Needs ${field.rebirths} Rebirths`
 
