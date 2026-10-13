@@ -25,7 +25,6 @@ const BALL_PAD = { x: SITES.upgrades.x - 5.3, z: SITES.upgrades.z + (TUTORIAL.ba
 
 // Where the UI arrow points on each step: [selector, side of the element it sits on].
 const UI_TARGETS = {
-  0: ['.kick', 'top'],
   4: ['.kick', 'top'],
   9: ['.kick', 'top'],
   11: ['.wlmodal.show .wlspin', 'top'],
@@ -197,14 +196,14 @@ export function createTutorial(scene, hud) {
     }
 
     drawGuide(step, t)
-    const ui = UI_TARGETS[step]
+    const ui = UI_TARGETS[step] ?? (step === 0 && isTouch ? ['.kick', 'top'] : null) // desktop: click the world, no button arrow
     if (ui) pointAt(...ui)
     else clearUi()
 
     const press = isTouch ? 'tap' : 'click'
     const walkHint = 'Follow the arrows'
     const [title, hint] = [
-      [`${press[0].toUpperCase()}${press.slice(1)} the screen to gain Kick Power (${Math.floor(stats.kickPower)}/${levelCap()})`, `Fill the bar to level up${isTouch ? '' : ' - KICK! or F works too'}`],
+      [isTouch ? `Tap KICK! to gain Kick Power (${Math.floor(stats.kickPower)}/${levelCap()})` : `Left-click the screen to gain Kick Power (${Math.floor(stats.kickPower)}/${levelCap()})`, 'Fill the bar to level up'],
       ['Walk onto the x1 Kick goal', walkHint],
       [`Train on the goal to reach Level ${TUTORIAL.level3} (${stats.level}/${TUTORIAL.level3})`, 'Stay on the goal - it kicks for you every few seconds'],
       ['Head to the Kick Strip', 'Follow the arrows to the south end of the arena'],
