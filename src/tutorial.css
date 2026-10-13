@@ -9,7 +9,8 @@
 .tutorial.complete .tut-tag, .tutorial.complete .tut-text { color: #8dff8a; }
 @keyframes tut-pop { 0% { transform: scale(0.7); opacity: 0; } 70% { transform: scale(1.06); } 100% { transform: scale(1); opacity: 1; } }
 /* Narrow screens: the banner may not fit one line. */
-@media (max-width: 900px) { .tutorial { white-space: normal; text-align: center; max-width: 92vw; } }
+@media (max-width: 900px) { .tutorial { white-space: normal; text-align: center; max-width: 92vw; background: none; border: 0; box-shadow: none; } }
+@media (pointer: coarse) { .tutorial { background: none; border: 0; box-shadow: none; } .tutorial.complete { background: none; } .tut-tag, .tut-sub { -webkit-text-stroke: 4px #1b1b28; paint-order: stroke fill; } }
 
 /* Sits above the element (data-side=top, pointing down) or to its left (data-side=left, pointing right). */
 .tut-arrow { position: fixed; z-index: 60; width: 54px; height: 72px; pointer-events: none; transform: translate(-50%, -100%); filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.35)); }
