@@ -484,6 +484,7 @@ export function createHud() {
   function showSticky() {
     el.toast.textContent = sticky
     el.toast.classList.add('bad')
+    el.toast.classList.remove('good') // .good would otherwise win over .bad in the CSS
     el.toast.classList.toggle('show', !!sticky)
   }
   // Error sound: one preloaded element, restarted per error (same pattern as the kick tick).
@@ -603,6 +604,7 @@ export function createHud() {
     const needs = text && /^Needs /.test(text) ? text : ''
     if (needs !== sticky) {
       sticky = needs
+      if (sticky) errorSfx()
       if (!toastBusy) {
         if (sticky) showSticky()
         else el.toast.classList.remove('show')
