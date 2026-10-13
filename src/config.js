@@ -237,7 +237,7 @@ export const ECONOMY = {
   // Wins for a kick grow exponentially with distance: winsMax at laneLength metres.
   laneLength: LANE.length,
   winsMax: 50000,
-  winsCurve: 4, // higher = flatter start, steeper finish
+  winsCurve: 7, // higher = flatter start, steeper finish (7: a 12 m kick pays ~8, 550 m pays winsMax)
   autoClickInterval: 0.25, // s between automatic kicks (never faster than kickCooldown)
   padKickInterval: 2, // s between the automatic kicks while standing on a training pad
   kickCooldown: 0.35, // s a manual click/F/KICK! must wait after the last kick (anti spam-click); Auto Kick obeys it too
