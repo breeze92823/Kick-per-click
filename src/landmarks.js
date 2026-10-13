@@ -561,7 +561,7 @@ function ballLines(i) {
   }
   return [
     { ...top, px: 20 },
-    { text: `${formatNumber(BALLS[i].cost)} Wins`, px: 22, fill: 'white' },
+    { text: BALLS[i].cost ? `${formatNumber(BALLS[i].cost)} Wins` : 'Free', px: 22, fill: 'white' },
     { text: `+${BALLS[i].kick} Kick`, px: 24, fill: 'gold' },
   ]
 }
