@@ -44,6 +44,8 @@ jobs:
         env:
           VITE_SERVER_URL_DEV: ${{ vars.SERVER_URL_DEV || secrets.SERVER_URL_DEV }}
           VITE_SERVER_URL_MAIN: ${{ vars.SERVER_URL_MAIN || secrets.SERVER_URL_MAIN }}
+          # Starting rebirths (repo variable START_REBIRTHS): dev channel builds only, never prod.
+          VITE_START_REBIRTHS: ${{ steps.channel.outputs.channel != 'prod' && vars.START_REBIRTHS || '' }}
         run: |
           if [ "${{ steps.channel.outputs.channel }}" = "prod" ]; then
             npm run build
