@@ -2,12 +2,13 @@
 // asks two things of them: how high the floor is under a point (box tops a
 // short step below the feet count as floor) and how far to push the player's
 // circle out of any box it walks into.
-import { ARENA, GROUND_Y, PHYSICS } from './config.js'
+import { ARENA, GROUND_Y, PHYSICS, laneCx } from './config.js'
 
-// Bare floor height at (x, z): the kick lane is sunk below the hub.
+// Bare floor height at (x, z): the kick lanes (hub and beach) are sunk below the ground.
 export function baseFloor(x, z) {
   const { lane, maxZ } = ARENA
-  return z >= maxZ && z <= lane.endZ && x >= lane.minX && x <= lane.maxX ? GROUND_Y - lane.drop : GROUND_Y
+  const dx = x - laneCx(x)
+  return z >= maxZ && z <= lane.endZ && dx >= lane.minX && dx <= lane.maxX ? GROUND_Y - lane.drop : GROUND_Y
 }
 
 const boxes = []
@@ -17,7 +18,15 @@ export const addPusher = (fn) => pushers.push(fn)
 
 // (cx, cz) centre, w along local X, d along local Z, solid from y0 to y1.
 export function addCollider(cx, cz, w, d, y1, rotY = 0, y0 = GROUND_Y) {
-  boxes.push({ cx, cz, hx: w / 2, hz: d / 2, y0, y1, cos: Math.cos(rotY), sin: Math.sin(rotY) })
+  const box = { cx, cz, hx: w / 2, hz: d / 2, y0, y1, cos: Math.cos(rotY), sin: Math.sin(rotY) }
+  boxes.push(box)
+  return box
+}
+
+// Takes back a collider addCollider returned (the dev editor re-places landmarks).
+export function removeCollider(box) {
+  const i = boxes.indexOf(box)
+  if (i >= 0) boxes.splice(i, 1)
 }
 
 // Point into box-local coordinates (inverse of a three.js Y rotation).

@@ -1,11 +1,12 @@
 // Every tunable constant lives here; the rest of src/ holds no theme values.
+import devTransforms from './devTransforms.json'
 
 // --- Identity -------------------------------------------------------------
 export const GAME_SLUG = 'kick-per-click' // slug registered on bloxity.io
 export const GAME_TITLE = 'Kick per Click'
 
 // Forces the Bloxity SDK and avatar CDN to be treated as unavailable (see .env.example).
-export const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
+export const DEV_MODE = String(import.meta.env.VITE_DEV_MODE).toLowerCase() === 'true'
 
 // Colyseus game server (Kick-per-click-backend), one URL per Bloxity Legion channel: `npm run build`
 // (production) reads _MAIN, `npm run dev` and `npm run build:dev` read _DEV (`npm run dev` defaults to
@@ -49,25 +50,80 @@ export const ARENA = {
 }
 export const SPAWN_PAD_RADIUS = 4.6
 
+// Beach World: a second, sandy copy of the plaza + kick lane east of the arena (same z range, so the lane maths is
+// shared), reached through the portal. `cx` is its centre; everything east of `cx / 2` counts as the beach.
+export const BEACH = {
+  rebirths: 10, // needed to enter (ignored with VITE_DEV_MODE=true)
+  winsMult: 2, // wins multiplier for kicks landed on the beach lane
+  cx: 150,
+  spawn: { x: 150, y: 0.6, z: 0 }, // on the beach-ball pad at the plaza centre
+  spawnFacing: 0,
+  // Sky / fog / bounce light blended in while the player is on the beach (world.js createWorldTint).
+  tint: { zenith: '#1a8cff', skyMid: '#5ccbff', horizon: '#fff0cf', hemiGround: '#f6e2b0' },
+  colors: {
+    sand: '#f6e2b0',
+    sandDark: '#e8cd92',
+    wetSand: '#d6b77a',
+    cliff: '#e9c27a',
+    cap: '#fff0c2',
+    capDark: '#f4d89a',
+    water: '#3fc4ff',
+    waterLight: '#8fe6ff',
+    shallow: '#56e0e0', // sea colour at the shoreline, fading to `deep` offshore
+    deep: '#1470c8',
+    palm: '#46c95a',
+    palmDark: '#2fa346',
+    palmLight: '#7fe06a',
+    trunk: '#b98a52',
+    trunkLight: '#c99d66',
+    trunkDark: '#8a6238',
+    coconut: '#6b4a2a',
+    coconutGreen: '#7a9a2e',
+    bush: '#2f9a4a',
+    bushDark: '#237a3a',
+    bushLight: '#4fbf5e',
+    grass: ['#b8c96a', '#d8d48a', '#9cbc4a'], // dune grass blades
+    flowers: ['#ff3d7a', '#ff9a1a', '#ffd21f', '#ff6fd0'],
+    rock: '#8e9aae',
+    rockLight: '#b6c0d0',
+    wood: '#c58e55',
+    woodDark: '#9a6a3a',
+    drift: '#a89580',
+  },
+  // Lawns copied from LAWNS under the beach landmarks, as dune grass; lawns this far north are left as open sand.
+  lawn: { lawn: '#c2dc6a', curb: '#d9b27a', tuft: ['#9cbc4a', '#d8d48a'], rock: ['#8e9aae', '#b6c0d0'], minZ: -36 },
+  waterY: 0.16, // sea surface height (the floor stays at 0: players wade up to the buoy line)
+  shoreZ: -50, // where the water starts, just north of the plaza
+  buoyZ: -60, // swim limit
+}
+export const inBeach = (x) => x > BEACH.cx / 2
+// X of the centre line of the kick lane that x belongs to (hub lane at 0, beach lane at BEACH.cx).
+export const laneCx = (x) => (inBeach(x) ? BEACH.cx : 0)
+
 // Landmark centres. Each faces the spawn unless it says otherwise.
 export const SITES = {
   training: { x: -33, z: -2 }, // row of training goals on the west side; faces east
   wheel: { x: -12, z: 14 },
   signBoard: { x: -21, z: 17 },
-  chest: { x: -14, z: -18 },
   leaderboards: { x: 0, z: -35 }, // three boards against the north wall; faces south
   noob: { x: 13, z: -17 },
   upgrades: { x: 30, z: -6 },
   chili: { x: 9, z: 11 },
   beachPortal: { x: 12, z: 16 },
 }
+// Beach World mirrors the hub: every landmark sits at the same offset from the beach centre (the hub's Beach World
+// portal becomes the beach's way home, 'beachReturn'; the rest become beachTraining, beachWheel, ...).
+export const beachKey = (key) => 'beach' + key[0].toUpperCase() + key.slice(1)
+for (const [key, s] of Object.entries({ ...SITES })) SITES[key === 'beachPortal' ? 'beachReturn' : beachKey(key)] = { x: s.x + BEACH.cx, z: s.z }
+// Positions saved by the dev editor (src/devEditor.js) replace the defaults above; the tutorial arrows and tree clearing follow.
+for (const [key, t] of Object.entries(devTransforms)) if (SITES[key]) Object.assign(SITES[key], { x: t.x, z: t.z })
 
 // Flush grass lawns with a thin orange outline. A lawn is one rect, or `parts`
 // (axis-aligned rects [x, z, w, d]) stepped into a staircase shape.
 export const LAWNS = [
   { parts: [[-15, 14, 20, 12], [-8, 6.5, 6, 3]] }, // wheel + sign board
   { parts: [[12, 16, 16, 12], [15, 8.5, 10, 3], [17.5, 5.5, 5, 3]] }, // Beach World portal + chili
-  { parts: [[-16, -18, 20, 9], [-26, -25.5, 14, 12]] }, // chest + north end of the goals row
+  { parts: [[-16, -18, 20, 9], [-26, -25.5, 14, 12]] }, // north end of the goals row
   { x: 0, z: -34, w: 40, d: 9, rot: 0 }, // leaderboards
   { x: 13, z: -17, w: 14, d: 9, rot: 0 }, // noob
   // Arena corners: grass against the cliffs, stepped toward the middle road.

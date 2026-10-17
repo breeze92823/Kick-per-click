@@ -2,7 +2,7 @@ import { inputState } from './input.js'
 import { player, floorAt } from './player.js'
 import { segmentClear } from './colliders.js'
 import { Quaternion, Vector3 } from 'three'
-import { ARENA, CAMERA, KICKBALL, PHYSICS } from './config.js'
+import { ARENA, CAMERA, KICKBALL, PHYSICS, laneCx } from './config.js'
 
 // Third-person chase camera, ported from +1 Cut Grass Adventure. It owns its own
 // yaw/pitch (right-drag) and orbits the player, so the movement keys never steer
@@ -123,11 +123,12 @@ function applyBallCam(camera, dt) {
 
   // Lane runs down +Z; stay inside the walls and above the ground.
   const maxX = ARENA.lane.maxX - B.laneMargin
-  const cx = clamp(bc.pos.x, -maxX, maxX)
+  const mid = laneCx(bc.pos.x) // centre line of this lane (hub 0, beach BEACH.cx)
+  const cx = clamp(bc.pos.x, mid - maxX, mid + maxX)
   const cz = bc.pos.z - B.distance
   const cy = Math.max(bc.pos.y + B.height, floorAt(cx, cz) + FLOOR_MARGIN + 0.5)
   camera.position.set(cx, cy, cz)
-  bcLook.set(clamp(bc.pos.x, -maxX, maxX), bc.pos.y + B.lookRise, bc.pos.z + B.lookAhead)
+  bcLook.set(cx, bc.pos.y + B.lookRise, bc.pos.z + B.lookAhead)
   camera.lookAt(bcLook)
 
   if (bc.t < 1) {

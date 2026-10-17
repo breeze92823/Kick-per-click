@@ -13,9 +13,8 @@ export function createVoxelBuilder() {
   const one = new Vector3(1, 1, 1)
   const col = new Color()
 
-  // Box centred at (x, y, z), yawed by rotY. BoxGeometry faces: +x, -x, +y, -y, +z, -z.
-  function box(material, x, y, z, w, h, d, color, rotY = 0) {
-    const g = new BoxGeometry(w, h, d)
+  // Metre UVs and a flat vertex colour on a unit-less BoxGeometry(w, h, d), then queued under `material`.
+  function push(material, g, w, h, d, color) {
     const uv = g.attributes.uv
     const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]]
     for (let f = 0; f < 6; f++) {
@@ -33,9 +32,41 @@ export function createVoxelBuilder() {
       c[i * 3 + 2] = col.b
     }
     g.setAttribute('color', new BufferAttribute(c, 3))
-    g.applyMatrix4(m.compose(p.set(x, y, z), q.setFromEuler(e.set(0, rotY, 0)), one))
     if (!byMaterial.has(material)) byMaterial.set(material, [])
     byMaterial.get(material).push(g)
+  }
+
+  // Box centred at (x, y, z), yawed by rotY. BoxGeometry faces: +x, -x, +y, -y, +z, -z.
+  function box(material, x, y, z, w, h, d, color, rotY = 0) {
+    const g = new BoxGeometry(w, h, d)
+    g.applyMatrix4(m.compose(p.set(x, y, z), q.setFromEuler(e.set(0, rotY, 0)), one))
+    push(material, g, w, h, d, color)
+  }
+
+  // A box running from point A to point B (any direction): its length is |AB|, `w` x `d` the cross-section.
+  // `across` hints which way the width points (default: sideways); it is made perpendicular to the beam.
+  // Used for leaning trunks, leaves, blades of grass: things plain yaw-only boxes cannot express.
+  const ax = new Vector3()
+  const ay = new Vector3()
+  const az = new Vector3()
+  const mid = new Vector3()
+  function beam(material, x0, y0, z0, x1, y1, z1, w, d, color, ahx = 1, ahy = 0, ahz = 0) {
+    ay.set(x1 - x0, y1 - y0, z1 - z0)
+    const len = ay.length()
+    if (len < 1e-4) return
+    ay.divideScalar(len)
+    ax.set(ahx, ahy, ahz)
+    ax.addScaledVector(ay, -ax.dot(ay))
+    if (ax.lengthSq() < 1e-6) {
+      ax.set(0, 0, 1)
+      ax.addScaledVector(ay, -ax.dot(ay))
+    }
+    ax.normalize()
+    az.crossVectors(ax, ay)
+    mid.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
+    const g = new BoxGeometry(w, len, d)
+    g.applyMatrix4(m.makeBasis(ax, ay, az).setPosition(mid))
+    push(material, g, w, len, d, color)
   }
 
   function build(parent) {
@@ -49,5 +80,5 @@ export function createVoxelBuilder() {
     byMaterial.clear()
   }
 
-  return { box, build }
+  return { box, beam, build }
 }
