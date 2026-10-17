@@ -2,7 +2,7 @@
 // character with their Bloxity cosmetics and a name tag, eased toward the pose the server last
 // relayed. Diffed against the roster every frame, so joins/leaves need no events.
 import { Group } from 'three'
-import { NET, PHYSICS } from './config.js'
+import { NET, PHYSICS, inBeach } from './config.js'
 import { net } from './net.js'
 import { makeLabel } from './labels.js'
 import { createLegendPet } from './legendPet.js'
@@ -132,7 +132,7 @@ export function createRemotePlayers(scene) {
       // Nearest first, capped, so a full room of 50 does not drown the frame rate.
       const near = []
       players.forEach((p, id) => {
-        if (id === mine) return
+        if (id === mine || inBeach(p.x) !== inBeach(viewer.x)) return // players in the other world are not drawn
         near.push({ id, p, d: Math.hypot(p.x - viewer.x, p.z - viewer.z) })
       })
       near.sort((a, b) => a.d - b.d)

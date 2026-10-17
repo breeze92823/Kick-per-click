@@ -1,15 +1,17 @@
-import { Clock, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three'
-import { ARENA, BALLS, CAMERA, ECONOMY, GRAPHICS_PRESETS, KICKBALL, SPAWN, SPAWN_FACING } from './config.js'
+import { Clock, Group, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three'
+import { ARENA, BALLS, BEACH, CAMERA, ECONOMY, GRAPHICS_PRESETS, KICKBALL, SPAWN, SPAWN_FACING, inBeach, laneCx } from './config.js'
 import * as bloxity from './bloxity.js'
 import { inputState, install as installInput, setControlsLocked, setWindowOpen } from './input.js'
 import { player, resetPlayer, step as stepPlayer, walkTo } from './player.js'
 import { enterAimView, exitAimView, isCameraBusy, syncYawToPlayer, update as updateCamera } from './camera.js'
-import { createFog, createGround, createLights, createSky } from './world.js'
+import { createFog, createGround, createLights, createSky, createWorldTint } from './world.js'
 import { createPlayerAvatar } from './playerAvatar.js'
 import { installViewport, isTouch } from './device.js'
 import { createTouchControls } from './touch.js'
 import { createVoxelBuilder } from './voxels.js'
 import { buildArena } from './arena.js'
+import { buildBeach, createBeachFx } from './beach.js'
+import { createBeachSound } from './beachSound.js'
 import { createLaneSections } from './laneSections.js'
 import { createLandmarks } from './landmarks.js'
 import { createHud } from './hud.js'
@@ -60,15 +62,48 @@ const sky = createSky()
 scene.add(sky, createGround())
 const lights = createLights()
 scene.add(lights.hemi, lights.sun, lights.sun.target)
+const tintWorld = createWorldTint(sky, scene.fog, lights)
+let beachTint = 0 // 0 = arena sky, 1 = beach sky
 
 // The map: static voxel scenery is merged after every builder has added its boxes.
+// The arena and Beach World are separate groups so only the one the player is in is drawn (see showWorld).
 const voxels = createVoxelBuilder()
 buildArena(voxels)
+const hubWorld = new Group()
+const beachWorld = new Group()
+scene.add(hubWorld, beachWorld)
+const beachVoxels = createVoxelBuilder()
+buildBeach(beachVoxels)
+beachVoxels.build(beachWorld)
+const beachFx = createBeachFx(beachWorld)
+const beachSound = createBeachSound() // surf, wind and gulls on the beach
 createLaneSections(scene)
 let hud = null
-const landmarks = createLandmarks(scene, voxels, (text, ok = true) => hud?.toast(text, !ok)) // ball buy / equip results, same banner as every other message
-voxels.build(scene)
+// Beach World portals: fade out, move the player, fade back in. Ignored while a kick is in flight.
+const travelFade = document.createElement('div')
+travelFade.id = 'travel-fade'
+document.body.appendChild(travelFade)
+let travelling = false
+function travelTo(world, spawn) {
+  if (travelling || ballKick.busy) return
+  travelling = true
+  travelFade.classList.add('on')
+  setTimeout(() => {
+    resetPlayer(spawn, spawn.facing)
+    syncYawToPlayer()
+    travelFade.classList.remove('on')
+    setTimeout(() => (travelling = false), 300)
+  }, 350)
+}
+const landmarks = createLandmarks(scene, (text, ok = true) => hud?.toast(text, !ok), travelTo) // ball buy / equip results, same banner as every other message
+voxels.build(hubWorld)
 hud = createHud()
+// Dev-only layout editor: both conditions are build-time constants, so builds drop the import entirely.
+if (import.meta.env.DEV && String(import.meta.env.VITE_DEV_MODE).toLowerCase() === 'true') {
+  import('./devEditor.js').then((m) =>
+    m.initDevEditor({ scene, camera, renderer, landmarks, teleportTo: (x, y, z) => { resetPlayer({ x, y, z }, player.facing); syncYawToPlayer() } }),
+  )
+}
 createTouchControls({ showMenu: bloxity.showMenu })
 const tutorial = createTutorial(scene, hud)
 
@@ -97,7 +132,7 @@ const ballKick = createBallKick(scene, avatar, {
   onBounce: () => hud.kickFx.bounce(),
   onBonus: (pct) => hud.kickFx.bonus(pct),
   onLanded: (metres, ballPos, bonusPct) => {
-    const wins = winsForDistance(metres, bonusPct)
+    const wins = winsForDistance(metres, bonusPct) * (inBeach(ballPos.x) ? BEACH.winsMult : 1) // Beach World pays extra
     lastKick = { metres, wins, bonusPct }
     hud.kickFx.distanceDone(metres)
     if (recordDistance(metres)) sendBest(stats.bestDistance)
@@ -156,6 +191,16 @@ let autoLaneTimer = 0
 let onPad = false
 let wasNearWheel = false
 
+// Cliffs hide each world from the other, so the hidden one is skipped entirely (draw, shadow and vertex cost):
+// its static scenery, its landmark sites and, for the arena, nothing else needs to change. Travel happens behind
+// the fade, so the swap is never seen.
+let shownBeach = null
+function showWorld(beach) {
+  hubWorld.visible = !beach
+  beachWorld.visible = beach
+  for (const site of landmarks.sites) site.group.visible = inBeach(site.group.position.x) === beach
+}
+
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1) // clamp huge frames (tab switch, breakpoint)
   elapsed += dt
@@ -169,7 +214,8 @@ renderer.setAnimationLoop(() => {
   if (nearWheel && !wasNearWheel) hud.openWheel() // opens once per visit; walk off and back to reopen
   wasNearWheel = nearWheel
   if (!!player.padTarget !== onPad) avatar.setBallHeld(!(onPad = !!player.padTarget)) // the ball is on the pad's spot, not in the hands
-  inLane = player.position.z > ARENA.maxZ - 9 && player.position.x > ARENA.minX && player.position.x < ARENA.maxX // kick strip, ramp and lane
+  const lcx = laneCx(player.position.x) // hub plaza at 0, beach plaza at BEACH.cx
+  inLane = player.position.z > ARENA.maxZ - 9 && player.position.x > lcx + ARENA.minX && player.position.x < lcx + ARENA.maxX // kick strip, ramp and lane
   hud.setLane(inLane)
   tutorial.update(elapsed, inLane)
   // Controls stay locked from the aim meter until the ball has landed and the camera is back.
@@ -198,7 +244,7 @@ renderer.setAnimationLoop(() => {
   // Auto Kick: keeps taking the Tap to Kick shot in the lane (random 0%-50% power) whenever the ball is free.
   // Not in the lane yet: walk to the kick strip (idle players only; any move input cancels the walk).
   if (stats.autoKick && !inLane && !winOpen && !player.padTarget && !player.walkTarget && !ballKick.busy && !inputState.move.x && !inputState.move.z && player.grounded) {
-    walkTo(0, ARENA.maxZ - 4)
+    walkTo(lcx, ARENA.maxZ - 4)
   }
   if (stats.autoKick && inLane && !winOpen) {
     autoLaneTimer -= dt
@@ -217,6 +263,12 @@ renderer.setAnimationLoop(() => {
   sendPose(player, speed, avatar.poseString())
   remotePlayers.update(dt, player.position)
   updateCamera(camera, dt)
+  const onBeach = inBeach(player.position.x)
+  if (onBeach !== shownBeach) showWorld((shownBeach = onBeach))
+  beachTint += ((onBeach ? 1 : 0) - beachTint) * Math.min(1, dt * 3)
+  tintWorld(beachTint)
+  beachSound.update(dt, elapsed, player.position)
+  if (beachTint > 0.01) beachFx.update(elapsed) // sea waves and foam (only drawn on the beach)
   sky.position.copy(camera.position)
   lights.follow(player.position.x, player.position.z)
   renderer.render(scene, camera)

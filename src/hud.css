@@ -848,3 +848,15 @@ html.touch #hud .lgbody, html.touch #hud .invgrid { touch-action: pan-y; overscr
   html.compact #hud .power { --k: calc(var(--k0) * 0.5); }
   html.compact #hud:not(.lane) .topbar { left: calc(50% + 45px); } /* clear of the Bloxity SDK pill */
 }
+
+/* Beach World portal travel: quick fade to black while the player is moved. */
+#travel-fade {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 60;
+}
+#travel-fade.on { opacity: 1; }

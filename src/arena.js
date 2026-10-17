@@ -5,6 +5,7 @@ import { addCollider } from './colliders.js'
 import { ARENA, COLORS, LANE, LANE_THEMES, LAWNS, SITES, SPAWN_PAD_RADIUS, clamp } from './config.js'
 import { studMaterial } from './materials.js'
 import { mulberry32, pentagonAxis, soccerPanel } from './textures.js'
+import { palm } from './palms.js'
 
 export const faceOrigin = (x, z) => Math.atan2(-x, -z)
 
@@ -22,7 +23,7 @@ export function buildArena(b) {
 // --- Cliffs ------------------------------------------------------------------------
 // One straight, axis-aligned cliff from (x0, z0) to (x1, z1); (nx, nz) points into
 // the play area. Columns step up and down; the outer ring stands taller.
-function cliffRun(b, mat, rand, x0, z0, x1, z1, nx, nz, heights, drop = 0, pal = {}) {
+export function cliffRun(b, mat, rand, x0, z0, x1, z1, nx, nz, heights, drop = 0, pal = {}) {
   const { wall = COLORS.wall, cap = COLORS.grass, capDark = COLORS.grassDark, tree } = pal
   const alongX = z0 === z1
   const len = Math.abs(alongX ? x1 - x0 : z1 - z0)
@@ -94,7 +95,7 @@ function buildLane(b, mat, rand) {
   const pathW = 8
   const side = (lane.maxX - lane.minX - pathW) / 2 - 1.4
   const dy = -lane.drop
-  buildRamp(b, mat)
+  buildRamp(b, mat, 0)
   for (let i = 0; i < LANE.sections; i++) {
     const th = LANE_THEMES[i]
     const z0 = i === 0 ? maxZ + RAMP_LEN : sectionStart(i)
@@ -117,18 +118,20 @@ function buildLane(b, mat, rand) {
 
 // A full-width ramp from the hub down into the sunken lane, built from 0.1 m treads
 // (walkable: well under the step-up) so it reads as a smooth slope with no gaps.
-const RAMP_LEN = 12
-function buildRamp(b, mat) {
+export const RAMP_LEN = 12
+export const KICK_STRIP_H = 0.06
+// `laneX` is the lane's centre line (0 for the hub, BEACH.cx for the beach).
+export function buildRamp(b, mat, laneX = 0, color = COLORS.sand) {
   const { maxZ, lane } = ARENA
   const n = Math.round(lane.drop / 0.1)
   const run = RAMP_LEN / n
   const w = lane.maxX - lane.minX
-  const cx = (lane.minX + lane.maxX) / 2
+  const cx = laneX + (lane.minX + lane.maxX) / 2
   const h = (lane.drop + KICK_STRIP_H) / n // tread height, starting flush with the kick strip's top
   for (let i = 0; i < n - 1; i++) {
     const top = KICK_STRIP_H - h * (i + 1)
     const z = maxZ + run * (i + 0.5)
-    b.box(mat, cx, (top - lane.drop) / 2, z, w, top + lane.drop, run + 0.02, COLORS.sand)
+    b.box(mat, cx, (top - lane.drop) / 2, z, w, top + lane.drop, run + 0.02, color)
     addCollider(cx, z, w, run, top, 0, -lane.drop)
   }
 }
@@ -136,7 +139,7 @@ function buildRamp(b, mat) {
 // --- Lawns ---------------------------------------------------------------------------------
 // Flush grass slab(s) inside a thin orange outline (the outline is every rect grown by
 // `rim`, so stepped shapes get one continuous border), dotted with tufts and blue rocks.
-function lawn(b, mat, rand, rects, rot = 0, dy = 0, pal = {}) {
+export function lawn(b, mat, rand, rects, rot = 0, dy = 0, pal = {}) {
   const { lawn: lawnColor = COLORS.lawn, curb = COLORS.curb } = pal
   const rim = 0.45
   const c = Math.cos(rot)
@@ -161,7 +164,6 @@ function lawn(b, mat, rand, rects, rot = 0, dy = 0, pal = {}) {
 }
 
 // Kick strip: pale strip across the plaza's south edge, where it meets the lane mouth.
-const KICK_STRIP_H = 0.06
 function buildKickStrip(b, mat) {
   const { minX, maxX, maxZ } = ARENA
   // Runs right up to the ramp's first tread (z = maxZ + 0.01 overlap) so there is no gap.
@@ -223,6 +225,7 @@ function buildSpawnPad(b, mat) {
 // --- Trees ---------------------------------------------------------------------------------------
 // Topiary tree: thin trunk through three stacked, rounded leaf blobs.
 export function roundTree(b, mat, rand, x, y0, z, s = 1, pal = {}) {
+  if (pal.palm) return palm(b, mat, rand, x, y0, z, s, { solid: y0 < 1, lite: y0 >= 1, pal }) // Beach World cliff-top trees
   const { leaf = COLORS.leaf, leafDark = COLORS.leafDark, trunk = COLORS.trunk } = pal
   const trunkH = 7 * s
   b.box(mat, x, y0 + trunkH / 2, z, 0.7 * s, trunkH, 0.7 * s, trunk)

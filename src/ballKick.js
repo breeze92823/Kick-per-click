@@ -2,7 +2,7 @@
 // the lane on a gravity arc. It lands and stops (no bounce), the distance pops up,
 // then the ball and the camera reset to the pre-kick state.
 import { Mesh, SphereGeometry } from 'three'
-import { ARENA, BALLS, GROUND_Y, KICKBALL as K, LANE } from './config.js'
+import { ARENA, BALLS, GROUND_Y, KICKBALL as K, LANE, laneCx } from './config.js'
 import { ballMaterial } from './materials.js'
 import { floorAt, player } from './player.js'
 import { inputState } from './input.js'
@@ -122,12 +122,14 @@ export function createBallKick(scene, avatar, hooks = {}) {
   let bonusPct = 0 // % wins earned by flying through it this kick
   let missed = false // a ring was missed: the ball finishes the arc it is on and lands
   let vx = 0 // steering velocity (m/s, + = world +X)
+  let cx = 0 // x of the centre line of the lane being kicked down (hub 0, beach BEACH.cx)
 
   // Full-power range scaled by the aim meter (speed^2), the arc's peak and the number of rings it earns.
+  // Planned in lane-local x (relative to cx); launch() shifts the rings to world x once the bonus ring is placed.
   function planKick(range, x0, z0, y0) {
     const { arc, rings } = K
     const apex = arc.minApex + (arc.maxApex - arc.minApex) * Math.pow(Math.min(1, range / LANE.length), arc.curve)
-    return planFlight({
+    const flight = planFlight({
       g: K.gravity,
       z0,
       y0,
@@ -145,6 +147,7 @@ export function createBallKick(scene, avatar, hooks = {}) {
       minShift: rings.minShift,
       rand: Math.random,
     })
+    return flight
   }
 
   function launch() {
@@ -152,10 +155,10 @@ export function createBallKick(scene, avatar, hooks = {}) {
     mesh.material = ballMaterial(def.color, def.patch)
     mesh.position.set(player.position.x, player.position.y + K.startHeight, player.position.z + K.startForward)
     originZ = Math.min(LANE.originZ, mesh.position.z)
+    cx = laneCx(mesh.position.x)
     const f = 0.5 + 0.5 * Math.min(1, power / K.fullPowerAt) // PERFECT! (>= fullPowerAt) reaches the ball's full range
     const range = kickRange() * f * f
-    plan = planKick(range, mesh.position.x, mesh.position.z, mesh.position.y)
-    ringObjs = plan.rings.map((r) => fx.spawnRing(r.x, r.y, r.z))
+    plan = planKick(range, mesh.position.x - cx, mesh.position.z, mesh.position.y)
     bonus = null
     bonusPct = 0
     if (range >= B.minRange && Math.random() < B.chance) {
@@ -164,7 +167,7 @@ export function createBallKick(scene, avatar, hooks = {}) {
         yLand: GROUND_Y - ARENA.lane.drop + K.radius,
         ringRadius: K.ringRadius,
         steer: K.steer,
-        x0: mesh.position.x,
+        x0: mesh.position.x - cx,
         xLimit: Math.max(0, ARENA.lane.maxX - WALL_MARGIN - K.rings.edge),
         reach: B.reach,
         from: B.from,
@@ -173,11 +176,14 @@ export function createBallKick(scene, avatar, hooks = {}) {
         rand: Math.random,
       })
       if (spot) {
+        spot.x += cx // world x
         let roll = Math.random() * B.tiers.reduce((a, t) => a + t.weight, 0)
         const tier = B.tiers.find((t) => (roll -= t.weight) < 0) ?? B.tiers[0]
         bonus = { ...spot, tier, obj: fx.spawnBonusRing(spot.x, spot.y, spot.z, tier) }
       }
     }
+    for (const r of plan.rings) r.x += cx // world x from here on
+    ringObjs = plan.rings.map((r) => fx.spawnRing(r.x, r.y, r.z))
     seg = 0
     ts = 0
     blocked = false
@@ -211,8 +217,9 @@ export function createBallKick(scene, avatar, hooks = {}) {
     const p = mesh.position
     const input = inputState.steer
     const inLane = p.z >= laneZ
-    const toWall = Math.sign(p.x) // +1 near the +X wall, -1 near the -X wall
-    const room = inLane ? Math.max(0, Math.min(1, (inner - Math.abs(p.x)) / S.wallSlow)) : 1
+    const lx = p.x - cx // lane-local x
+    const toWall = Math.sign(lx) // +1 near the +X wall, -1 near the -X wall
+    const room = inLane ? Math.max(0, Math.min(1, (inner - Math.abs(lx)) / S.wallSlow)) : 1
     const k = room * room * (3 - 2 * room) // smoothstep
     const dir = -input // D / right = world -X when facing down the lane (+Z)
     if (dir) {
@@ -224,8 +231,8 @@ export function createBallKick(scene, avatar, hooks = {}) {
     vx = Math.max(-cap, Math.min(cap, vx))
     if (inLane && vx * toWall > 0) vx = toWall * Math.min(Math.abs(vx), cap * k) // slow toward the wall
     p.x += vx * dt
-    if (inLane && Math.abs(p.x) > inner) {
-      p.x = Math.sign(p.x) * inner
+    if (inLane && Math.abs(p.x - cx) > inner) {
+      p.x = cx + Math.sign(p.x - cx) * inner
       vx = 0
     }
   }
@@ -273,7 +280,7 @@ export function createBallKick(scene, avatar, hooks = {}) {
 
     // Lane walls and end: the ball stops going forward instead of leaving the lane.
     const { maxZ, lane } = ARENA
-    if (prevZ < maxZ && p.z >= maxZ - K.radius && Math.abs(p.x) > inner) {
+    if (prevZ < maxZ && p.z >= maxZ - K.radius && Math.abs(p.x - cx) > inner) {
       p.z = prevZ
       blocked = true
     }

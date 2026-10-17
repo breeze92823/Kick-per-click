@@ -1,7 +1,7 @@
 // Player progression: kick power fills the level bar, the equipped football and
 // the training field set kick power per click, wins unlock footballs and rebirths.
 // Saved to localStorage (best effort: storage may be blocked).
-import { BALLS, ECONOMY, KICKBALL, LANE, LEGENDS, TUTORIAL } from './config.js'
+import { BALLS, BEACH, DEV_MODE, ECONOMY, KICKBALL, LANE, LEGENDS, TUTORIAL } from './config.js'
 
 const SAVE_KEY = 'kick-per-click:v3'
 const OLD_KEY = 'kick-per-click:v2' // rebirths started at 1 there
@@ -127,6 +127,8 @@ export const levelCap = (level = stats.level) => ECONOMY.capBase + ECONOMY.capPe
 export const rebirthMult = (r = stats.rebirths) => Math.round((1 + ECONOMY.multPerRebirth * r) * 100) / 100
 export const multiplier = () => rebirthMult()
 export const fieldUnlocked = (field) => stats.rebirths >= field.rebirths
+// Beach World needs BEACH.rebirths; VITE_DEV_MODE=true lifts the requirement.
+export const beachUnlocked = () => DEV_MODE || stats.rebirths >= BEACH.rebirths
 // Kick power of a ball; the Black Hole ball is always 2x the best other ball you own.
 export function ballKick(i) {
   const b = BALLS[i]

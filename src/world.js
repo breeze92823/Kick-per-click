@@ -1,5 +1,5 @@
 import { BackSide, DoubleSide, Color, DirectionalLight, Fog, Group, HemisphereLight, Mesh, Path, ShaderMaterial, Shape, ShapeGeometry, SphereGeometry, Vector2, Vector3 } from 'three'
-import { ARENA, COLORS, FOG, GROUND_SIZE, GROUND_Y, LIGHT, SKY } from './config.js'
+import { ARENA, BEACH, COLORS, FOG, GROUND_SIZE, GROUND_Y, LIGHT, SKY } from './config.js'
 import { groundMaterial } from './materials.js'
 
 // Stud-plate UVs follow world position so the hub and the sunken lane tile alike.
@@ -18,21 +18,25 @@ export function createGround() {
   const south = Math.max(h, lane.endZ + 60)
   const shape = new Shape([new Vector2(-h, -south), new Vector2(h, -south), new Vector2(h, h), new Vector2(-h, h)])
   // Rotated -90deg about X, shape y becomes world -z.
-  shape.holes.push(new Path([new Vector2(lane.minX, -maxZ), new Vector2(lane.minX, -lane.endZ), new Vector2(lane.maxX, -lane.endZ), new Vector2(lane.maxX, -maxZ)]))
+  const lanes = [0, BEACH.cx] // the hub lane and the beach lane
+  const rect = (cx) => [new Vector2(cx + lane.minX, -maxZ), new Vector2(cx + lane.minX, -lane.endZ), new Vector2(cx + lane.maxX, -lane.endZ), new Vector2(cx + lane.maxX, -maxZ)]
+  for (const cx of lanes) shape.holes.push(new Path(rect(cx)))
   const mat = groundMaterial()
   const hub = new Mesh(worldUVs(new ShapeGeometry(shape)), mat)
   const floorMat = mat.clone()
   floorMat.side = DoubleSide
-  const floor = new Mesh(worldUVs(new ShapeGeometry(new Shape([new Vector2(lane.minX, -lane.endZ), new Vector2(lane.maxX, -lane.endZ), new Vector2(lane.maxX, -maxZ), new Vector2(lane.minX, -maxZ)]))), floorMat)
-  floor.position.y = -lane.drop
   const group = new Group()
-  for (const m of [hub, floor]) {
-    m.rotation.x = -Math.PI / 2
-    m.receiveShadow = true
-    group.add(m)
-  }
+  hub.rotation.x = -Math.PI / 2
+  hub.receiveShadow = true
   hub.position.y = GROUND_Y
-  floor.position.y = GROUND_Y - lane.drop
+  group.add(hub)
+  for (const cx of lanes) {
+    const floor = new Mesh(worldUVs(new ShapeGeometry(new Shape(rect(cx)))), floorMat)
+    floor.rotation.x = -Math.PI / 2
+    floor.receiveShadow = true
+    floor.position.y = GROUND_Y - lane.drop
+    group.add(floor)
+  }
   return group
 }
 
@@ -152,4 +156,21 @@ export function createLights() {
   }
   follow(0, 0)
   return { hemi, sun, follow }
+}
+
+// Blends the sky, fog and bounce light toward the beach palette (t: 0 = arena, 1 = Beach World).
+export function createWorldTint(sky, fog, lights) {
+  const u = sky.material.uniforms
+  const base = { top: u.top.value.clone(), mid: u.mid.value.clone(), bottom: u.bottom.value.clone(), ground: lights.hemi.groundColor.clone() }
+  const beach = { top: new Color(BEACH.tint.zenith), mid: new Color(BEACH.tint.skyMid), bottom: new Color(BEACH.tint.horizon), ground: new Color(BEACH.tint.hemiGround) }
+  let last = -1
+  return (t) => {
+    if (Math.abs(t - last) < 0.002) return
+    last = t
+    u.top.value.copy(base.top).lerp(beach.top, t)
+    u.mid.value.copy(base.mid).lerp(beach.mid, t)
+    u.bottom.value.copy(base.bottom).lerp(beach.bottom, t)
+    fog.color.copy(base.bottom).lerp(beach.bottom, t)
+    lights.hemi.groundColor.copy(base.ground).lerp(beach.ground, t)
+  }
 }
